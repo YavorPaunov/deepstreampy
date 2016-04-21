@@ -1,0 +1,8 @@
+from __future__ import absolute_import, division, print_function, with_statement
+
+CLOSED = 'CLOSED'
+AWAITING_AUTHENTICATION = 'AWAITING_AUTHENTICATION'
+AUTHENTICATING = 'AUTHENTICATING'
+OPEN = 'OPEN'
+ERROR = 'ERROR'
+RECONNECTING = 'RECONNECTING'
