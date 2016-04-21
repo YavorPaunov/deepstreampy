@@ -25,6 +25,7 @@ class ConnectionTest(testing.AsyncTestCase):
         self.server.listen(PORT)
         self.server.start()
         self.client = client.Client(HOST, PORT)
+        print("SETUP")
 
     @testing.gen_test
     def test_success_login(self):
@@ -113,9 +114,16 @@ class ConnectionTest(testing.AsyncTestCase):
                                                        self.client))
         self.stop()
 
-    def test_state_change(self):
-        """State change listeners test."""
-        pass
+    @testing.gen_test
+    def test_send_queued(self):
+        """Test sending messages queued up before establishing connection."""
+        login_future = self.client.login({"username": "alice"})
+        self.assertEquals(self.client.connection_state,
+                          connection_state.CLOSED)
+        yield self.client.connect()
+        self.server.write(message_builder.get_message(topic.AUTH, actions.ACK))
+        result_data = yield login_future
+        self.assertTrue(result_data['success'])
 
     def tearDown(self):
         super(ConnectionTest, self).tearDown()

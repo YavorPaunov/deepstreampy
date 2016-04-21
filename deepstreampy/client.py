@@ -7,7 +7,7 @@ from deepstreampy.constants import connection_state, topic, actions
 from deepstreampy.constants import event as event_constants
 from deepstreampy.constants import message as message_constants
 
-from tornado import ioloop, tcpclient, concurrent, gen
+from tornado import ioloop, tcpclient, concurrent
 import socket
 
 
@@ -101,7 +101,7 @@ class _Connection(object):
         data_size = len(message_data)
         if message_action == actions.ERROR:
             if (message_data and
-                message_data[0] == event_constants.TOO_MANY_AUTH_ATTEMPTS):
+                    message_data[0] == event_constants.TOO_MANY_AUTH_ATTEMPTS):
                 self._deliberate_close = True
                 self._too_many_auth_attempts = True
             else:
@@ -133,6 +133,8 @@ class _Connection(object):
 
             if self._auth_callback:
                 self._auth_callback(True, None, auth_data)
+
+            self._send_queued_messages()
 
     def _get_auth_data(self, data):
         if data:
@@ -226,7 +228,6 @@ class Client(EventEmitter, object):
         if message['topic'] in self._message_callbacks:
             self._message_callbacks[message['topic']](message)
         else:
-            # TODO: Processed error?
             self._on_error(message['topic'],
                            event_constants.MESSAGE_PARSE_ERROR,
                            ('Received message for unknown topic ' +

@@ -1,7 +1,9 @@
 from __future__ import absolute_import, division, print_function, with_statement
 from __future__ import unicode_literals
+
 from deepstreampy.constants import message as message_constants
 from deepstreampy.constants import topic, event, actions, types
+
 import json
 import sys
 
@@ -10,7 +12,8 @@ def parse(raw_messages, client):
     parsed_messages = []
     raw_messages = raw_messages.split(message_constants.MESSAGE_SEPERATOR)
     for msg in raw_messages:
-        if len(msg) > 2:
+        # Ensure msg is not an empty string
+        if msg:
             parsed_messages.append(_parse_message(msg, client))
     return parsed_messages
 
@@ -18,7 +21,9 @@ def parse(raw_messages, client):
 def _parse_message(message, client):
     parts = message.split(message_constants.MESSAGE_PART_SEPERATOR)
     if len(parts) < 2:
-        client._on_error(topic.ERROR, event.MESSAGE_PARSE_ERROR,
+        # A valid message consists of at least 2 parts: action and topic
+        client._on_error(topic.ERROR,
+                         event.MESSAGE_PARSE_ERROR,
                          'Insufficient message parts')
         return
 
