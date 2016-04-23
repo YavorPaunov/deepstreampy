@@ -25,7 +25,6 @@ class ConnectionTest(testing.AsyncTestCase):
         self.server.listen(PORT)
         self.server.start()
         self.client = client.Client(HOST, PORT)
-        print("SETUP")
 
     @testing.gen_test
     def test_success_login(self):
