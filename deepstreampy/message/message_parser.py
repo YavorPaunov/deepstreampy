@@ -48,7 +48,7 @@ def convert_typed(value, client):
         try:
             return json.loads(value[1:])
         except ValueError as e:
-            client._on_error(topic.ERROR, event.MESSAGE_PARSE_ERROR, e.message)
+            client._on_error(topic.ERROR, event.MESSAGE_PARSE_ERROR, str(e))
             return
 
     if value_type == types.NUMBER:

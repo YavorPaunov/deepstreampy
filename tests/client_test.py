@@ -29,29 +29,29 @@ class ConnectionTest(testing.AsyncTestCase):
     @testing.gen_test
     def test_success_login(self):
         """Generator style test for successful login."""
-        self.assertEquals(self.client.connection_state, connection_state.CLOSED)
+        self.assertEqual(self.client.connection_state, connection_state.CLOSED)
         yield self.client.connect()
 
-        self.assertEquals(self.client.connection_state,
-                          connection_state.AWAITING_AUTHENTICATION)
+        self.assertEqual(self.client.connection_state,
+                         connection_state.AWAITING_AUTHENTICATION)
         login_future = self.client.login({"username": "alice"})
-        self.assertEquals(self.client.connection_state,
-                          connection_state.AUTHENTICATING)
+        self.assertEqual(self.client.connection_state,
+                         connection_state.AUTHENTICATING)
         self.server.write(message_builder.get_message(topic.AUTH, actions.ACK))
         login_data = yield login_future
 
-        self.assertIsInstance(login_data, dict)
+        self.assertTrue(isinstance(login_data, dict))
         self.assertTrue(login_data['success'])
-        self.assertIsNone(login_data['error'])
+        self.assertTrue(login_data['error'] is None)
 
     @testing.gen_test
     def test_login_error(self):
         """Generator style test for failed login."""
-        self.assertEquals(self.client.connection_state, connection_state.CLOSED)
+        self.assertEqual(self.client.connection_state, connection_state.CLOSED)
         yield self.client.connect()
 
-        self.assertEquals(self.client.connection_state,
-                          connection_state.AWAITING_AUTHENTICATION)
+        self.assertEqual(self.client.connection_state,
+                         connection_state.AWAITING_AUTHENTICATION)
         login_future = self.client.login({"username": "alice"})
         login_error = "INVALID_AUTH_DATA"
         self.server.write(message_builder.get_message(
@@ -60,25 +60,24 @@ class ConnectionTest(testing.AsyncTestCase):
             [login_error, message_builder.typed('invalid user')]))
         login_data = yield login_future
 
-        self.assertEquals(self.client.connection_state,
-                          connection_state.AWAITING_AUTHENTICATION)
-
+        self.assertEqual(self.client.connection_state,
+                         connection_state.AWAITING_AUTHENTICATION)
         self.assertFalse(login_data['success'])
-        self.assertEquals(login_data['error'], login_error)
-        self.assertEquals(login_data['message'],
-                          message_parser.convert_typed('Sinvalid user',
-                                                       self.client))
+        self.assertEqual(login_data['error'], login_error)
+        self.assertEqual(login_data['message'],
+                         message_parser.convert_typed('Sinvalid user',
+                                                      self.client))
 
     def test_success_login_callback(self):
         """Callback style test for successful login."""
-        self.assertEquals(self.client.connection_state, connection_state.CLOSED)
+        self.assertEqual(self.client.connection_state, connection_state.CLOSED)
         self.client.connect(self.stop)
         self.wait()
-        self.assertEquals(self.client.connection_state,
-                          connection_state.AWAITING_AUTHENTICATION)
+        self.assertEqual(self.client.connection_state,
+                         connection_state.AWAITING_AUTHENTICATION)
         self.client.login({"username": "alice"}, self._handle_success_login)
-        self.assertEquals(self.client.connection_state,
-                          connection_state.AUTHENTICATING)
+        self.assertEqual(self.client.connection_state,
+                         connection_state.AUTHENTICATING)
 
         self.server.write(message_builder.get_message(topic.AUTH, actions.ACK))
         self.wait()
@@ -89,12 +88,12 @@ class ConnectionTest(testing.AsyncTestCase):
 
     def test_login_error_callback(self):
         """Callback style test for failed login."""
-        self.assertEquals(self.client.connection_state, connection_state.CLOSED)
+        self.assertEqual(self.client.connection_state, connection_state.CLOSED)
         self.client.connect(self.stop)
         self.wait()
 
-        self.assertEquals(self.client.connection_state,
-                          connection_state.AWAITING_AUTHENTICATION)
+        self.assertEqual(self.client.connection_state,
+                         connection_state.AWAITING_AUTHENTICATION)
         self.client.login({"username": "alice"}, self._handle_failed_login)
         self.server.write(message_builder.get_message(
             topic.AUTH,
@@ -102,23 +101,23 @@ class ConnectionTest(testing.AsyncTestCase):
             ["INVALID_AUTH_DATA", message_builder.typed('invalid user')]))
         self.wait()
 
-        self.assertEquals(self.client.connection_state,
-                          connection_state.AWAITING_AUTHENTICATION)
+        self.assertEqual(self.client.connection_state,
+                         connection_state.AWAITING_AUTHENTICATION)
 
     def _handle_failed_login(self, success, error, message):
         self.assertFalse(success)
-        self.assertEquals(error, "INVALID_AUTH_DATA")
-        self.assertEquals(message,
-                          message_parser.convert_typed('Sinvalid user',
-                                                       self.client))
+        self.assertEqual(error, "INVALID_AUTH_DATA")
+        self.assertEqual(message,
+                         message_parser.convert_typed('Sinvalid user',
+                                                      self.client))
         self.stop()
 
     @testing.gen_test
     def test_send_queued(self):
         """Test sending messages queued up before establishing connection."""
         login_future = self.client.login({"username": "alice"})
-        self.assertEquals(self.client.connection_state,
-                          connection_state.CLOSED)
+        self.assertEqual(self.client.connection_state,
+                         connection_state.CLOSED)
         yield self.client.connect()
         self.server.write(message_builder.get_message(topic.AUTH, actions.ACK))
         result_data = yield login_future
