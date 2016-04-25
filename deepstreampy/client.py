@@ -149,9 +149,24 @@ class _Connection(object):
 
     @property
     def state(self):
+        """str: State of the connection.
+
+        The possible states are defined in constants.connection_state.
+        Can be one of the following:
+            - closed
+            - awaiting_authentication
+            - authenticating
+            - open
+            - error
+            - reconnecting
+        """
         return self._state
 
     def send(self, raw_message):
+        """Main method for sending messages.
+
+        All messages are passed onto and handled by tornado.
+        """
         if self._state == connection_state.OPEN:
             self._stream.write(raw_message.encode())
         else:
@@ -186,11 +201,19 @@ class _Connection(object):
 
 
 class Client(EventEmitter, object):
+    """
+    deepstream.io Python client based on tornado.
+    """
 
     def __init__(self, host, port):
+        """Creates the client but doesn't connect to the server.
+
+        Args:
+            host (str): The host to connect to
+            port (str): The port to use to connect
+        """
         super(Client, self).__init__()
         self._connection = _Connection(self, host, port)
-
         self._message_callbacks = dict()
 
         def not_implemented_callback(topic):
@@ -212,6 +235,12 @@ class Client(EventEmitter, object):
             topic.ERROR] = lambda x: not_implemented_callback(topic.ERROR)
 
     def connect(self, callback=None):
+        """Establishes connection to the host and port given to the constructor.
+
+        Args:
+            callback (callable): Will be called when connection is established
+                without any arguments
+        """
         return self._connection.connect(callback)
 
     def start(self):
@@ -224,6 +253,24 @@ class Client(EventEmitter, object):
         self._connection.close()
 
     def login(self, auth_params, callback=None):
+        """Sends authentication parameters to the server.
+
+        If the connection is not yet established the authentication parameter
+        will be stored and send once it becomes available
+        Can be called multiple times until either the connection is
+        authenticated.
+
+        Note: A max auth attempts option is currently not implemented but will
+            be in the near future.
+
+        Args:
+            auth_params: JSON serializable data structure, it's up to the
+                permission handler on the server to make sense of them, although
+                something like { username: 'someName', password: 'somePass' }
+                will probably make the most sense.
+            callback (callable): Will be called with True in case of success, or
+                False, error_type, error_message in case of failure
+        """
         return self._connection.authenticate(auth_params, callback)
 
     def _on_message(self, message):

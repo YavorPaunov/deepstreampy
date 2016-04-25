@@ -39,7 +39,8 @@ class ConnectionTest(testing.AsyncTestCase):
         login_future = self.client.login({"username": "alice"})
         self.assertEqual(self.client.connection_state,
                          connection_state.AUTHENTICATING)
-        self.server.write(message_builder.get_message(topic_constants.AUTH, actions.ACK))
+        self.server.write(message_builder.get_message(topic_constants.AUTH,
+                                                      actions.ACK))
         login_data = yield login_future
 
         self.assertTrue(isinstance(login_data, dict))
@@ -102,10 +103,14 @@ class ConnectionTest(testing.AsyncTestCase):
                                                       actions.ACK))
         login_data = yield login_future
         self.assertTrue(login_data['success'])
-        self.client.once('error', lambda a,b,c: print(a, b, c))
+        self.client.once('error', self._handle_wrong_topic)
         self.server.write(message_builder.get_message('WRONG',
                                                       actions.ACK,
                                                       ['somedata']))
+    def _handle_wrong_topic(self, message, event, topic):
+        self.assertEqual(message, "Received message for unknown topic WRONG")
+        self.assertEqual(topic, "WRONG")
+        self.assertEqual(event, event_constants.MESSAGE_PARSE_ERROR)
 
     def test_success_login_callback(self):
         """Callback style test for successful login."""
@@ -118,7 +123,8 @@ class ConnectionTest(testing.AsyncTestCase):
         self.assertEqual(self.client.connection_state,
                          connection_state.AUTHENTICATING)
 
-        self.server.write(message_builder.get_message(topic_constants.AUTH, actions.ACK))
+        self.server.write(message_builder.get_message(topic_constants.AUTH,
+                                                      actions.ACK))
         self.wait()
 
     def _handle_success_login(self, success, error, message):
@@ -158,7 +164,8 @@ class ConnectionTest(testing.AsyncTestCase):
         self.assertEqual(self.client.connection_state,
                          connection_state.CLOSED)
         yield self.client.connect()
-        self.server.write(message_builder.get_message(topic_constants.AUTH, actions.ACK))
+        self.server.write(message_builder.get_message(topic_constants.AUTH,
+                                                      actions.ACK))
         result_data = yield login_future
         self.assertTrue(result_data['success'])
 
