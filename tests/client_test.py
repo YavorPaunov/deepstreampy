@@ -7,7 +7,9 @@ from __future__ import unicode_literals
 
 from tests.util import FakeServer
 from deepstreampy.message import message_builder, message_parser
-from deepstreampy.constants import topic, actions, connection_state
+from deepstreampy.constants import actions, connection_state
+from deepstreampy.constants import topic as topic_constants
+from deepstreampy.constants import event as event_constants
 from deepstreampy import client
 from tornado import testing
 
@@ -37,7 +39,7 @@ class ConnectionTest(testing.AsyncTestCase):
         login_future = self.client.login({"username": "alice"})
         self.assertEqual(self.client.connection_state,
                          connection_state.AUTHENTICATING)
-        self.server.write(message_builder.get_message(topic.AUTH, actions.ACK))
+        self.server.write(message_builder.get_message(topic_constants.AUTH, actions.ACK))
         login_data = yield login_future
 
         self.assertTrue(isinstance(login_data, dict))
@@ -55,7 +57,7 @@ class ConnectionTest(testing.AsyncTestCase):
         login_future = self.client.login({"username": "alice"})
         login_error = "INVALID_AUTH_DATA"
         self.server.write(message_builder.get_message(
-            topic.AUTH,
+            topic_constants.AUTH,
             actions.ERROR,
             [login_error, message_builder.typed('invalid user')]))
         login_data = yield login_future
@@ -68,6 +70,43 @@ class ConnectionTest(testing.AsyncTestCase):
                          message_parser.convert_typed('Sinvalid user',
                                                       self.client))
 
+    @testing.gen_test
+    def test_too_many_attempts(self):
+        """Generator style test for too many auth attempts."""
+        self.assertEqual(self.client.connection_state, connection_state.CLOSED)
+        yield self.client.connect()
+        login_future = self.client.login({"username": "alice"})
+        message = ("A{0}E{0}TOO_MANY_AUTH_ATTEMPTS{0}Stoo many authentication "
+                   "attempts{1}").format(chr(31), chr(30))
+        self.server.write(message)
+        login_data = yield login_future
+        self.assertFalse(login_data['success'])
+
+        self.client.once('error', self._handle_too_many_attempts)
+        login_future = self.client.login({"username": "alice"})
+        login_data = yield login_future
+
+    def _handle_too_many_attempts(self, message, event, topic):
+        self.assertEqual(message, "this client's connection was closed")
+        self.assertEqual(event, event_constants.IS_CLOSED)
+        self.assertEqual(topic, topic_constants.ERROR)
+
+    @testing.gen_test
+    def test_wrong_topic(self):
+        yield self.client.connect()
+
+        self.assertEqual(self.client.connection_state,
+                         connection_state.AWAITING_AUTHENTICATION)
+        login_future = self.client.login({"username": "alice"})
+        self.server.write(message_builder.get_message(topic_constants.AUTH,
+                                                      actions.ACK))
+        login_data = yield login_future
+        self.assertTrue(login_data['success'])
+        self.client.once('error', lambda a,b,c: print(a, b, c))
+        self.server.write(message_builder.get_message('WRONG',
+                                                      actions.ACK,
+                                                      ['somedata']))
+
     def test_success_login_callback(self):
         """Callback style test for successful login."""
         self.assertEqual(self.client.connection_state, connection_state.CLOSED)
@@ -79,7 +118,7 @@ class ConnectionTest(testing.AsyncTestCase):
         self.assertEqual(self.client.connection_state,
                          connection_state.AUTHENTICATING)
 
-        self.server.write(message_builder.get_message(topic.AUTH, actions.ACK))
+        self.server.write(message_builder.get_message(topic_constants.AUTH, actions.ACK))
         self.wait()
 
     def _handle_success_login(self, success, error, message):
@@ -96,7 +135,7 @@ class ConnectionTest(testing.AsyncTestCase):
                          connection_state.AWAITING_AUTHENTICATION)
         self.client.login({"username": "alice"}, self._handle_failed_login)
         self.server.write(message_builder.get_message(
-            topic.AUTH,
+            topic_constants.AUTH,
             actions.ERROR,
             ["INVALID_AUTH_DATA", message_builder.typed('invalid user')]))
         self.wait()
@@ -119,7 +158,7 @@ class ConnectionTest(testing.AsyncTestCase):
         self.assertEqual(self.client.connection_state,
                          connection_state.CLOSED)
         yield self.client.connect()
-        self.server.write(message_builder.get_message(topic.AUTH, actions.ACK))
+        self.server.write(message_builder.get_message(topic_constants.AUTH, actions.ACK))
         result_data = yield login_future
         self.assertTrue(result_data['success'])
 

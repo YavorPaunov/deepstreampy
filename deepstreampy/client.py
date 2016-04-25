@@ -73,9 +73,12 @@ class _Connection(object):
         self._auth_future = concurrent.Future()
 
         if self._too_many_auth_attempts:
-            self._client._on_error(topic.ERROR, event_constants.IS_CLOSED,
-                                   "this client's connection was closed")
-            return self._auth_future
+            msg = "this client's connection was closed"
+            self._client._on_error(topic.ERROR, event_constants.IS_CLOSED, msg)
+            self._auth_future.set_result(
+                    {'success': False,
+                     'error': event_constants.IS_CLOSED,
+                     'message': msg})
 
         elif self._deliberate_close and self._state == connection_state.CLOSED:
             self._connect()
