@@ -1,0 +1,30 @@
+from __future__ import absolute_import, division, print_function, with_statement
+from __future__ import unicode_literals
+
+from behave import *
+import os
+from deepstreampy import client
+from tornado import tcpserver, ioloop
+
+def before_scenario(context, scenario):
+    context.server = None
+    context.client = None
+    context.client_errors = []
+    context.io_loop = ioloop.IOLoop.current()
+
+def after_scenario(context, scenario):
+    if context.server:
+        context.server.stop()
+
+    context.server = None
+    context.client = None
+    context.login_future = None
+
+def ___after_step(context, step):
+    current_loop = ioloop.IOLoop.current()
+
+    def stop_loop():
+        current_loop.stop()
+
+    current_loop.call_later(0.5, stop_loop)
+    current_loop.start()
