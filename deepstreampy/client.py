@@ -231,8 +231,7 @@ class Client(EventEmitter, object):
         self._message_callbacks[
             topic.RECORD] = lambda x: not_implemented_callback(topic.RECORD)
 
-        self._message_callbacks[
-            topic.ERROR] = lambda x: not_implemented_callback(topic.ERROR)
+        self._message_callbacks[topic.ERROR] = self._on_error
 
     def connect(self, callback=None):
         """Establishes connection to the host and port given to the constructor.
@@ -274,7 +273,6 @@ class Client(EventEmitter, object):
         return self._connection.authenticate(auth_params, callback)
 
     def _on_message(self, message):
-        # TODO: Call message callback for the topic
         if message['topic'] in self._message_callbacks:
             self._message_callbacks[message['topic']](message)
         else:

@@ -1,4 +1,4 @@
-from tornado import tcpserver
+from tornado import tcpserver, concurrent
 
 class FakeServer(tcpserver.TCPServer):
 
@@ -8,13 +8,17 @@ class FakeServer(tcpserver.TCPServer):
         self.received_messages = list()
         self.stream = None
         self.connections = []
+        self._messsage_future = None
 
     def write(self, message):
         self.queued_messages.append(message)
         self.stream.write(message.encode())
 
     def read(self, data):
-        self.received_messages.append(data.decode())
+        message = data.decode()
+        self.received_messages.append(message)
+        if self._messsage_future:
+            self._messsage_future.set_result(message)
 
     def handle_stream(self, stream, address):
         self.connections.append(stream)
@@ -23,3 +27,7 @@ class FakeServer(tcpserver.TCPServer):
 
     def reset_message_count(self):
         self.received_messages = list()
+
+    def await_message(self):
+        self._messsage_future = concurrent.Future()
+        return self._messsage_future

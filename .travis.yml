@@ -6,7 +6,9 @@ python:
     - "3.4"
     - "3.5"
 install: 
-    - pip install -r requirements.txt
+    - pip install -r dev_requirements.txt
     - pip install coveralls
-script: nosetests --cover-package=deepstreampy --with-coverage
+script: 
+    - nosetests --cover-package=deepstreampy --with-coverage
+    - behave
 after_success: coveralls
