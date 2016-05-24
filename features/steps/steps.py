@@ -71,8 +71,10 @@ def server_last_message(context, message):
     assert len(context.server.received_messages) > 0, 'No messages received.'
     last_message = message_parser.parse(context.server.received_messages[-1],
                                         context.client)[0]
-    assert last_message == parsed_message, '{0} is not {1}'.format(
-        last_message, parsed_message)
+    assert ((last_message['data'] == parsed_message['data'] and
+            last_message['topic'] == parsed_message['topic'] and
+            last_message['action'] == parsed_message['action']),
+            '{0} is not {1}'.format(last_message, parsed_message))
 
 
 @then(u'the clients connection state is "{state}"')
