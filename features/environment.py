@@ -2,9 +2,7 @@ from __future__ import absolute_import, division, print_function, with_statement
 from __future__ import unicode_literals
 
 from behave import *
-import os
-from deepstreampy import client
-from tornado import tcpserver, ioloop
+from tornado import ioloop
 
 def before_scenario(context, scenario):
     context.server = None
@@ -13,9 +11,6 @@ def before_scenario(context, scenario):
     context.io_loop = ioloop.IOLoop.current()
 
 def after_scenario(context, scenario):
-    if context.server:
-        context.server.stop()
-
     context.server = None
     context.client = None
     context.login_future = None

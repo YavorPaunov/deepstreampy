@@ -1,6 +1,7 @@
 from __future__ import absolute_import, division, print_function, with_statement
 from deepstreampy.constants import types
 from deepstreampy.constants import message as message_constants
+from deepstreampy.utils import Undefined
 import sys
 import json
 
@@ -11,14 +12,21 @@ def get_message(topic, action, data=None):
     if data:
         for param in data:
             if isinstance(param, dict):
-                send_data.append(json.dumps(param,
-                                            separators=(',', ':'),
-                                            sort_keys=False))
+                value = json.dumps(param,
+                                   separators=(',', ':'),
+                                   sort_keys=True)
+                send_data.append(value)
+            elif isinstance(param, list):
+                value = ("[" +
+                         ",".join('"{0}"'.format(item) for item in param) +
+                         "]")
+                send_data.append(value)
             else:
                 send_data.append(str(param))
 
-    return (message_constants.MESSAGE_PART_SEPERATOR.join(send_data) +
-            message_constants.MESSAGE_SEPERATOR)
+    full_message = (message_constants.MESSAGE_PART_SEPERATOR.join(send_data) +
+                    message_constants.MESSAGE_SEPERATOR)
+    return full_message
 
 
 def typed(value):
@@ -51,6 +59,7 @@ def typed(value):
     if value_type in num_types:
         return types.NUMBER + str(value)
 
-    # TODO: How to handle undefined?
+    if value is Undefined:
+        return types.UNDEFINED
 
     raise ValueError("Can't serialize type {0}".format(value_type))

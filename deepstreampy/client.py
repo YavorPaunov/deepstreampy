@@ -2,6 +2,7 @@ from __future__ import absolute_import, division, print_function, with_statement
 from __future__ import unicode_literals
 from pyee import EventEmitter
 from collections import deque
+from deepstreampy.record import RecordHandler
 from deepstreampy.message import message_builder, message_parser
 from deepstreampy.constants import connection_state, topic, actions
 from deepstreampy.constants import event as event_constants
@@ -9,6 +10,7 @@ from deepstreampy.constants import message as message_constants
 
 from tornado import ioloop, tcpclient, concurrent
 import socket
+import errno
 
 
 class _Connection(object):
@@ -26,6 +28,7 @@ class _Connection(object):
         self._auth_callback = None
         self._auth_future = None
         self._connect_callback = None
+        self._connect_error = None
 
         self._message_buffer = ""
         self._deliberate_close = False
@@ -38,24 +41,43 @@ class _Connection(object):
         self._current_message_reset_timeout = None
         self._state = connection_state.CLOSED
 
-    def connect(self, callback):
+    def connect(self, callback=None):
         self._connect_callback = callback
         connect_future = tcpclient.TCPClient().connect(self._host,
                                                        self._port,
                                                        socket.AF_INET)
-        connect_future.add_done_callback(self._on_connect)
+        self._io_loop.add_future(connect_future, self._on_open)
         return connect_future
 
-    def _on_connect(self, f):
-        self._stream = f.result()
-        self._stream.read_until_close(None, self._on_data)
-        self._state = connection_state.AWAITING_AUTHENTICATION
+    def _on_open(self, f):
+        exception = f.exception()
+        if exception:
+            self._connect_error = exception.real_error
+            self._on_error(self._connect_error)
 
-        if self._auth_params is not None:
-            self._send_auth_params()
+            #if self._state == connection_state.RECONNECTING:
+            self._reconnect_timeout = None
+            self._try_reconnect()
+
+            return
+
+        self._stream = f.result()
+        self._stream.set_close_callback(self._on_close)
+        self._stream.read_until_close(None, self._on_data)
+        self._state = connection_state.AWAITING_CONNECTION
 
         if self._connect_callback:
             self._connect_callback()
+
+
+    def _on_error(self, error):
+        self._set_state(connection_state.ERROR)
+        if error.errno in (errno.ECONNRESET, errno.ECONNREFUSED):
+            msg = "Can't connect! Deepstream server unreachable on " + self._url
+        else:
+            msg = str(error)
+        self._client._on_error(topic.CONNECTION,
+                               event_constants.CONNECTION_ERROR, msg)
 
     def start(self):
         self._io_loop.start()
@@ -139,6 +161,38 @@ class _Connection(object):
 
             self._send_queued_messages()
 
+    def _handle_connection_response(self, message):
+        action = message['action']
+        data = message['data']
+        if action == actions.PING:
+            ping_response = message_builder.get_message(
+                topic.CONNECTION, actions.PONG)
+            self.send(ping_response)
+        elif action == actions.ACK:
+            self._set_state(connection_state.AWAITING_AUTHENTICATION)
+            if self._auth_params is not None:
+                self._send_auth_params()
+        elif action == actions.CHALLENGE:
+            self._set_state(connection_state.CHALLENGING)
+            challenge_response = message_builder.get_message(
+                topic.CONNECTION,
+                actions.CHALLENGE_RESPONSE,
+                [self._url])
+            self.send(challenge_response)
+        elif action == actions.REJECTION:
+            self._challenge_denied = True
+            self.close()
+        elif action == actions.REDIRECT:
+            self._url = data[0]
+            self._redirecting = True
+            self.close()
+        elif action == actions.ERROR:
+            if data[0] == event_constants.CONNECTION_AUTHENTICATION_TIMEOUT:
+                self._deliberate_close = True
+                self._connection_auth_timeout = True
+                self._client._on_error(topic.CONNECTION, data[0], data[1])
+
+
     def _get_auth_data(self, data):
         if data:
             return message_parser.convert_typed(data, self._client)
@@ -161,6 +215,10 @@ class _Connection(object):
             - reconnecting
         """
         return self._state
+
+    def send_message(self, topic, action, data):
+        message = message_builder.get_message(topic, action, data)
+        self.send(message)
 
     def send(self, raw_message):
         """Main method for sending messages.
@@ -194,10 +252,39 @@ class _Connection(object):
             if msg is None:
                 continue
 
-            if msg['topic'] == topic.AUTH:
+            if msg['topic'] == topic.CONNECTION:
+                self._handle_connection_response(msg)
+            elif msg['topic'] == topic.AUTH:
                 self._handle_auth_response(msg)
             else:
                 self._client._on_message(parsed_messages[0])
+
+    def _try_reconnect(self):
+        if self._reconnect_timeout is not None:
+            return
+
+        # TODO: Use options to set max reconnect attempts
+        if self._reconnection_attempt < 3:
+            self._set_state(connection_state.RECONNECTING)
+            # TODO: Use options to set reconnect attempt interval
+            self._reconnect_timeout = self._io_loop.call_later(
+                3 * self._reconnection_attempt, self.connect)
+            self._reconnection_attempt += 1
+        else:
+            self._clear_reconnect()
+            #self._on_error(exception.real_error)
+
+
+    def _clear_reconnect(self):
+        self._io_loop.remove_callout(self._reconnect_timeout)
+        self._reconnect_timeout = None
+        self._reconnection_attempt = 0
+
+    def _on_close(self):
+        if self._deliberate_close:
+            self._set_state(connection_state.CLOSED)
+        else:
+            self._try_reconnect()
 
 
 class Client(EventEmitter, object):
@@ -214,13 +301,11 @@ class Client(EventEmitter, object):
         """
         super(Client, self).__init__()
         self._connection = _Connection(self, host, port)
+        self._record = RecordHandler({}, self._connection, self)
         self._message_callbacks = dict()
 
         def not_implemented_callback(topic):
             raise NotImplementedError("Topic " + topic + " not yet implemented")
-
-        self._message_callbacks[
-            topic.WEBRTC] = lambda x: not_implemented_callback(topic.WEBRTC)
 
         self._message_callbacks[
             topic.EVENT] = lambda x: not_implemented_callback(topic.EVENT)
@@ -229,7 +314,7 @@ class Client(EventEmitter, object):
             topic.RPC] = lambda x: not_implemented_callback(topic.RPC)
 
         self._message_callbacks[
-            topic.RECORD] = lambda x: not_implemented_callback(topic.RECORD)
+            topic.RECORD] = self._record._handle
 
         self._message_callbacks[topic.ERROR] = self._on_error
 
@@ -287,7 +372,7 @@ class Client(EventEmitter, object):
                            message['action'],
                            message['data'][0] if len(message['data']) else None)
 
-    def _on_error(self, topic, event, msg):
+    def _on_error(self, topic, event, msg=None):
         if event in (event_constants.ACK_TIMEOUT,
                      event_constants.RESPONSE_TIMEOUT):
             if (self._connection.state ==
@@ -314,3 +399,11 @@ class Client(EventEmitter, object):
     @property
     def connection_state(self):
         return self._connection.state
+
+    @property
+    def record(self):
+        return self._record
+
+    @property
+    def io_loop(self):
+        return self._connection._io_loop

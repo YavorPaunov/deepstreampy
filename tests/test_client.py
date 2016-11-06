@@ -107,6 +107,7 @@ class ConnectionTest(testing.AsyncTestCase):
         self.server.write(message_builder.get_message('WRONG',
                                                       actions.ACK,
                                                       ['somedata']))
+
     def _handle_wrong_topic(self, message, event, topic):
         self.assertEqual(message, "Received message for unknown topic WRONG")
         self.assertEqual(topic, "WRONG")
