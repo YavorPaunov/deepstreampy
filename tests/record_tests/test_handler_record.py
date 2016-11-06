@@ -7,7 +7,7 @@ from deepstreampy.constants import connection_state
 import unittest
 import sys
 
-if sys.version_info.major < 3:
+if sys.version_info[0] < 3:
     import mock
 else:
     from unittest import mock
@@ -66,7 +66,7 @@ class TestRecordRead(unittest.TestCase):
         self.record_A.discard()
         self.record_handler._handle({'topic': 'R', 'action': 'A',
                                      'data': ['US', 'record_A']})
-        self.on_discard.assert_called_once()
+        self.assertEquals(self.on_discard.call_count, 1)
         self.assertTrue(self.record_A.is_destroyed)
 
     def tearDown(self):
@@ -118,14 +118,14 @@ class TestRecordDeleted(unittest.TestCase):
 
         self._delete()
 
-        self.on_delete.assert_called_once()
+        self.assertEquals(self.on_delete.call_count, 1)
         self.assertTrue(self.record_A.is_destroyed)
 
     def test_resubscribe(self):
         self._create_empty()
         self._delete()
 
-        self.on_delete.assert_called_once()
+        self.assertEquals(self.on_delete.call_count, 1)
         self.assertTrue(self.record_A.is_destroyed)
 
         new_record = self.record_handler.get_record('record_A')

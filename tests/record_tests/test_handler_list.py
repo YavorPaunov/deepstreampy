@@ -7,7 +7,7 @@ from deepstreampy.constants import connection_state
 import unittest
 import sys
 
-if sys.version_info.major < 3:
+if sys.version_info[0] < 3:
     import mock
 else:
     from unittest import mock
@@ -67,6 +67,6 @@ class RecordTest(unittest.TestCase):
             'data': ['US', 'list_A']
         })
 
-        self.on_discard.assert_called_once()
+        self.assertEquals(self.on_discard.call_count, 1)
         self.assertTrue(self.listA.is_destroyed)
         self.assertTrue(self.listA2.is_destroyed)

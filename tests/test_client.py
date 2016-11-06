@@ -13,7 +13,7 @@ from deepstreampy import client
 from tornado import testing
 import sys
 
-if sys.version_info.major < 3:
+if sys.version_info[0] < 3:
     import mock
 else:
     from unittest import mock

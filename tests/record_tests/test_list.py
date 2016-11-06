@@ -8,7 +8,7 @@ from tests.util import msg
 import unittest
 import sys
 
-if sys.version_info.major < 3:
+if sys.version_info[0] < 3:
     import mock
 else:
     from unittest import mock
@@ -46,7 +46,7 @@ class ListTest(unittest.TestCase):
             {'topic': 'R', 'action': 'R',
              'data': ['someList', 1, '["entryA", "entryB"]']})
         self.assertListEqual(self.list.get_entries(), ['entryA', 'entryB'])
-        self.ready_callback.assert_called_once()
+        self.assertEquals(self.ready_callback.call_count, 1)
         self.change_callback.assert_called_with(['entryA', 'entryB'])
         self.assertFalse(self.list.is_empty)
 
