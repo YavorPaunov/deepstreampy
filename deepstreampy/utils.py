@@ -1,5 +1,5 @@
-from constants import actions as action_constants, event as event_constants
-from constants import connection_state
+from deepstreampy.constants import actions as action_constants, event as event_constants
+from deepstreampy.constants import connection_state
 from functools import partial
 import sys
 

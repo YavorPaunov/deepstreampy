@@ -7,7 +7,13 @@ from deepstreampy.constants import connection_state, merge_strategies
 from tests.util import msg
 
 import unittest
-import mock
+import sys
+
+if sys.version_info.major < 3:
+    import mock
+else:
+    from unittest import mock
+
 
 HOST = "localhost"
 PORT = 6026
@@ -52,5 +58,5 @@ class TestMergeConflict(unittest.TestCase):
 
         self.error_callback.assert_not_called()
         self.iostream.write.assert_called_with(
-            msg('R|U|someRecord|6|{"reason":"skippedVersion"}+'))
+            msg('R|U|someRecord|6|{"reason":"skippedVersion"}+').encode())
         self.subscribe_callback.assert_called_with({'reason': 'skippedVersion'})

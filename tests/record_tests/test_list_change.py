@@ -8,7 +8,12 @@ from deepstreampy.record import ENTRY_REMOVED_EVENT
 from deepstreampy.record import ENTRY_MOVED_EVENT
 from deepstreampy.constants import connection_state
 import unittest
-import mock
+import sys
+
+if sys.version_info.major < 3:
+    import mock
+else:
+    from unittest import mock
 
 HOST = "localhost"
 PORT = 6026

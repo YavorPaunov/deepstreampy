@@ -6,7 +6,12 @@ from deepstreampy.record import Record
 from deepstreampy.constants import connection_state
 from deepstreampy.utils import Undefined
 import unittest
-import mock
+import sys
+
+if sys.version_info.major < 3:
+    import mock
+else:
+    from unittest import mock
 
 HOST = "localhost"
 PORT = 6026
@@ -33,12 +38,12 @@ class RecordTest(unittest.TestCase):
     def test_create_record(self):
         self.assertDictEqual(self.record.get(), {})
         self.iostream.write.assert_called_with(
-            "R{0}CR{0}testRecord{1}".format(chr(31), chr(30)))
+            "R{0}CR{0}testRecord{1}".format(chr(31), chr(30)).encode())
 
     def test_send_update_message(self):
         self.record.set({'firstname': 'John'})
         expected = ("R{0}U{0}testRecord{0}1{0}{{\"firstname\":\"John\"}}{1}"
-                    .format(chr(31), chr(30)))
+                    .format(chr(31), chr(30)).encode())
         self.iostream.write.assert_called_with(expected)
         self.assertDictEqual(self.record.get(), {'firstname': 'John'})
         self.assertEquals(self.record.version, 1)
@@ -46,7 +51,7 @@ class RecordTest(unittest.TestCase):
     def test_send_patch_message(self):
         self.record.set('Smith', 'lastname')
         expected = ("R{0}P{0}testRecord{0}1{0}lastname{0}SSmith{1}"
-                    .format(chr(31), chr(30)))
+                    .format(chr(31), chr(30)).encode())
         self.iostream.write.assert_called_with(expected)
 
     def test_delete_value(self):

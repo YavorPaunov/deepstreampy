@@ -6,7 +6,12 @@ from deepstreampy.record import RecordHandler, List
 from deepstreampy.constants import connection_state
 from tests.util import msg
 import unittest
-import mock
+import sys
+
+if sys.version_info.major < 3:
+    import mock
+else:
+    from unittest import mock
 
 HOST = "localhost"
 PORT = 6026
@@ -29,7 +34,7 @@ class ListTest(unittest.TestCase):
 
     def test_create(self):
         self.assertIsNotNone(self.list.get_entries())
-        self.iostream.write.assert_called_with(msg("R|CR|someList+"))
+        self.iostream.write.assert_called_with(msg("R|CR|someList+").encode())
         self.ready_callback.assert_not_called()
 
     def test_empty(self):
@@ -54,7 +59,7 @@ class ListTest(unittest.TestCase):
         self.assertListEqual(self.list.get_entries(),
                              ['entryA', 'entryB', 'entryC'])
         self.iostream.write.assert_called_with(
-            msg('R|U|someList|2|["entryA","entryB","entryC"]+'))
+            msg('R|U|someList|2|["entryA","entryB","entryC"]+').encode())
 
     def test_remove(self):
         self.record_handler._handle(
@@ -65,7 +70,7 @@ class ListTest(unittest.TestCase):
         self.change_callback.assert_called_with(['entryA'])
         self.assertListEqual(self.list.get_entries(), ['entryA'])
         self.iostream.write.assert_called_with(
-            msg('R|U|someList|2|["entryA"]+'))
+            msg('R|U|someList|2|["entryA"]+').encode())
 
     def test_insert(self):
         self.record_handler._handle(
@@ -76,7 +81,7 @@ class ListTest(unittest.TestCase):
         self.assertListEqual(self.list.get_entries(),
                              ['entryA', 'entryC', 'entryB'])
         self.iostream.write.assert_called_with(
-            msg('R|U|someList|2|["entryA","entryC","entryB"]+'))
+            msg('R|U|someList|2|["entryA","entryC","entryB"]+').encode())
 
     def test_remove_at_index(self):
         self.record_handler._handle(
@@ -85,7 +90,7 @@ class ListTest(unittest.TestCase):
         self.list.remove_at(1)
         self.change_callback.assert_called_with(['entryA', 'entryC'])
         self.iostream.write.assert_called_with(
-            msg('R|U|someList|2|["entryA","entryC"]+'))
+            msg('R|U|someList|2|["entryA","entryC"]+').encode())
 
     def test_set_entire_list(self):
         self.record_handler._handle(

@@ -64,7 +64,7 @@ class _Connection(object):
         self._stream = f.result()
         self._stream.set_close_callback(self._on_close)
         self._stream.read_until_close(None, self._on_data)
-        self._state = connection_state.AWAITING_CONNECTION
+        self._set_state(connection_state.AWAITING_CONNECTION)
 
         if self._connect_callback:
             self._connect_callback()
@@ -86,8 +86,8 @@ class _Connection(object):
         self._io_loop.stop()
 
     def close(self):
-        if self._stream:
-            self._stream.close()
+        self._deliberate_close = True
+        self._stream.close()
 
     def authenticate(self, auth_params, callback):
         self._auth_params = auth_params
@@ -114,7 +114,7 @@ class _Connection(object):
         return self._auth_future
 
     def _send_auth_params(self):
-        self._state = connection_state.AUTHENTICATING
+        self._set_state(connection_state.AUTHENTICATING)
         raw_auth_message = message_builder.get_message(topic.AUTH,
                                                        actions.REQUEST,
                                                        [self._auth_params])
@@ -236,10 +236,10 @@ class _Connection(object):
 
         while self._queued_messages:
             raw_message = self._queued_messages.popleft()
-            self._stream.write(raw_message.encode())
+            self._stream.write(raw_message)
 
     def _on_data(self, data):
-        full_buffer = self._message_buffer + data.decode()
+        full_buffer = self._message_buffer + data
         split_buffer = full_buffer.rsplit(message_constants.MESSAGE_SEPERATOR,
                                           1)
         if len(split_buffer) > 1:

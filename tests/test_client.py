@@ -5,13 +5,18 @@ respective callbacks are made, and events triggered.
 from __future__ import absolute_import, division, print_function, with_statement
 from __future__ import unicode_literals
 
-from tests.util import FakeServer
 from deepstreampy.message import message_builder, message_parser
 from deepstreampy.constants import actions, connection_state
 from deepstreampy.constants import topic as topic_constants
 from deepstreampy.constants import event as event_constants
 from deepstreampy import client
 from tornado import testing
+import sys
+
+if sys.version_info.major < 3:
+    import mock
+else:
+    from unittest import mock
 
 HOST = "localhost"
 PORT = 6029
@@ -23,156 +28,65 @@ class ConnectionTest(testing.AsyncTestCase):
 
     def setUp(self):
         super(ConnectionTest, self).setUp()
-        self.server = FakeServer()
-        self.server.listen(PORT)
-        self.server.start()
-        self.client = client.Client(HOST, PORT)
+        self.client = mock.Mock()
+        self.iostream = mock.Mock()
+        self.auth_callback = mock.Mock()
 
-    @testing.gen_test
-    def test_success_login(self):
-        """Generator style test for successful login."""
-        self.assertEqual(self.client.connection_state, connection_state.CLOSED)
-        yield self.client.connect()
+    def _get_connection_state_changes(self):
+        count = 0
+        for call_args in self.client.emit.call_args_list:
+            if call_args[0][0] == event_constants.CONNECTION_STATE_CHANGED:
+                count += 1
+        return count
 
-        self.assertEqual(self.client.connection_state,
-                         connection_state.AWAITING_AUTHENTICATION)
-        login_future = self.client.login({"username": "alice"})
-        self.assertEqual(self.client.connection_state,
-                         connection_state.AUTHENTICATING)
-        self.server.write(message_builder.get_message(topic_constants.AUTH,
-                                                      actions.ACK))
-        login_data = yield login_future
+    def _get_sent_messages(self):
+        for call_args in self.iostream.write.call_args_list:
+            yield call_args[0]
 
-        self.assertTrue(isinstance(login_data, dict))
-        self.assertTrue(login_data['success'])
-        self.assertTrue(login_data['error'] is None)
+    def _get_last_sent_message(self):
+        return self.iostream.write.call_args[0][0]
 
-    @testing.gen_test
-    def test_login_error(self):
-        """Generator style test for failed login."""
-        self.assertEqual(self.client.connection_state, connection_state.CLOSED)
-        yield self.client.connect()
+    def test_connects(self):
+        connection = client._Connection(self.client, 'localhost', 6666)
+        assert connection.state == connection_state.CLOSED
+        self.assertEquals(self._get_connection_state_changes(), 0)
+        connect_future = connection.connect()
+        connect_future.set_result(self.iostream)
+        connection._on_open(connect_future)
+        self.assertEquals(connection.state,
+                          connection_state.AWAITING_CONNECTION)
+        self.assertEquals(self._get_connection_state_changes(), 1)
+        connection._on_data('C{0}A{1}'.format(chr(31), chr(30)))
+        self.assertEquals(connection.state,
+                          connection_state.AWAITING_AUTHENTICATION)
+        self.iostream.write.assert_not_called()
 
-        self.assertEqual(self.client.connection_state,
-                         connection_state.AWAITING_AUTHENTICATION)
-        login_future = self.client.login({"username": "alice"})
-        login_error = "INVALID_AUTH_DATA"
-        self.server.write(message_builder.get_message(
-            topic_constants.AUTH,
-            actions.ERROR,
-            [login_error, message_builder.typed('invalid user')]))
-        login_data = yield login_future
+        connection.authenticate({'user': 'Anon'}, self.auth_callback)
+        self.assertEquals(connection.state,
+                          connection_state.AUTHENTICATING)
+        self.assertEquals(self._get_last_sent_message(),
+                          "A{0}REQ{0}{{\"user\":\"Anon\"}}{1}".format(
+                              chr(31), chr(30)).encode())
+        self.assertEquals(self._get_connection_state_changes(), 3)
+        self.auth_callback.assert_not_called()
 
-        self.assertEqual(self.client.connection_state,
-                         connection_state.AWAITING_AUTHENTICATION)
-        self.assertFalse(login_data['success'])
-        self.assertEqual(login_data['error'], login_error)
-        self.assertEqual(login_data['message'],
-                         message_parser.convert_typed('Sinvalid user',
-                                                      self.client))
+        connection._on_data('A{0}A{1}'.format(chr(31), chr(30)))
+        self.assertEquals(connection.state,
+                          connection_state.OPEN)
+        self.auth_callback.assert_called_once_with(True, None, None)
+        self.assertEquals(self._get_connection_state_changes(), 4)
 
-    @testing.gen_test
-    def test_too_many_attempts(self):
-        """Generator style test for too many auth attempts."""
-        self.assertEqual(self.client.connection_state, connection_state.CLOSED)
-        yield self.client.connect()
-        login_future = self.client.login({"username": "alice"})
-        message = ("A{0}E{0}TOO_MANY_AUTH_ATTEMPTS{0}Stoo many authentication "
-                   "attempts{1}").format(chr(31), chr(30))
-        self.server.write(message)
-        login_data = yield login_future
-        self.assertFalse(login_data['success'])
+        connection.send_message('R', 'S', ['test1'])
+        self.iostream.write.assert_called_with(
+            'R{0}S{0}test1{1}'.format(chr(31), chr(30)).encode())
 
-        self.client.once('error', self._handle_too_many_attempts)
-        login_future = self.client.login({"username": "alice"})
-        login_data = yield login_future
+        closed_callback = self.iostream.set_close_callback.call_args[0][0]
+        connection.close()
+        closed_callback()
+        self.assertEquals(connection.state,
+                          connection_state.CLOSED)
+        self.assertEquals(self._get_connection_state_changes(), 5)
 
-    def _handle_too_many_attempts(self, message, event, topic):
-        self.assertEqual(message, "this client's connection was closed")
-        self.assertEqual(event, event_constants.IS_CLOSED)
-        self.assertEqual(topic, topic_constants.ERROR)
-
-    @testing.gen_test
-    def test_wrong_topic(self):
-        yield self.client.connect()
-
-        self.assertEqual(self.client.connection_state,
-                         connection_state.AWAITING_AUTHENTICATION)
-        login_future = self.client.login({"username": "alice"})
-        self.server.write(message_builder.get_message(topic_constants.AUTH,
-                                                      actions.ACK))
-        login_data = yield login_future
-        self.assertTrue(login_data['success'])
-        self.client.once('error', self._handle_wrong_topic)
-        self.server.write(message_builder.get_message('WRONG',
-                                                      actions.ACK,
-                                                      ['somedata']))
-
-    def _handle_wrong_topic(self, message, event, topic):
-        self.assertEqual(message, "Received message for unknown topic WRONG")
-        self.assertEqual(topic, "WRONG")
-        self.assertEqual(event, event_constants.MESSAGE_PARSE_ERROR)
-
-    def test_success_login_callback(self):
-        """Callback style test for successful login."""
-        self.assertEqual(self.client.connection_state, connection_state.CLOSED)
-        self.client.connect(self.stop)
-        self.wait()
-        self.assertEqual(self.client.connection_state,
-                         connection_state.AWAITING_AUTHENTICATION)
-        self.client.login({"username": "alice"}, self._handle_success_login)
-        self.assertEqual(self.client.connection_state,
-                         connection_state.AUTHENTICATING)
-
-        self.server.write(message_builder.get_message(topic_constants.AUTH,
-                                                      actions.ACK))
-        self.wait()
-
-    def _handle_success_login(self, success, error, message):
-        self.assertTrue(success)
-        self.stop()
-
-    def test_login_error_callback(self):
-        """Callback style test for failed login."""
-        self.assertEqual(self.client.connection_state, connection_state.CLOSED)
-        self.client.connect(self.stop)
-        self.wait()
-
-        self.assertEqual(self.client.connection_state,
-                         connection_state.AWAITING_AUTHENTICATION)
-        self.client.login({"username": "alice"}, self._handle_failed_login)
-        self.server.write(message_builder.get_message(
-            topic_constants.AUTH,
-            actions.ERROR,
-            ["INVALID_AUTH_DATA", message_builder.typed('invalid user')]))
-        self.wait()
-
-        self.assertEqual(self.client.connection_state,
-                         connection_state.AWAITING_AUTHENTICATION)
-
-    def _handle_failed_login(self, success, error, message):
-        self.assertFalse(success)
-        self.assertEqual(error, "INVALID_AUTH_DATA")
-        self.assertEqual(message,
-                         message_parser.convert_typed('Sinvalid user',
-                                                      self.client))
-        self.stop()
-
-    @testing.gen_test
-    def test_send_queued(self):
-        """Test sending messages queued up before establishing connection."""
-        login_future = self.client.login({"username": "alice"})
-        self.assertEqual(self.client.connection_state,
-                         connection_state.CLOSED)
-        yield self.client.connect()
-        self.server.write(message_builder.get_message(topic_constants.AUTH,
-                                                      actions.ACK))
-        result_data = yield login_future
-        self.assertTrue(result_data['success'])
-
-    def tearDown(self):
-        super(ConnectionTest, self).tearDown()
-        self.server.stop()
 
 if __name__ == '__main__':
     testing.unittest.main()

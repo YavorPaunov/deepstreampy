@@ -5,7 +5,12 @@ from deepstreampy import client
 from deepstreampy.record import RecordHandler
 from deepstreampy.constants import connection_state
 import unittest
-import mock
+import sys
+
+if sys.version_info.major < 3:
+    import mock
+else:
+    from unittest import mock
 
 HOST = "localhost"
 PORT = 6026
@@ -33,8 +38,8 @@ class TestRecordRead(unittest.TestCase):
             'data': ['record_A', 0, '{}']})
 
     def test_retrieve(self):
-        self.iostream.write.assert_called_with("R{0}CR{0}record_A{1}"
-                                               .format(chr(31), chr(30)))
+        self.iostream.write.assert_called_with(
+            "R{0}CR{0}record_A{1}".format(chr(31), chr(30)).encode())
 
     def test_initialise(self):
         self.assertFalse(self.record_A.is_ready)
@@ -46,8 +51,8 @@ class TestRecordRead(unittest.TestCase):
         self.record_A.discard()
         self.on_discard.assert_not_called()
         self.assertFalse(self.record_A.is_destroyed)
-        self.iostream.write.assert_called_with("R{0}US{0}record_A{1}"
-                                               .format(chr(31), chr(30)))
+        self.iostream.write.assert_called_with(
+            "R{0}US{0}record_A{1}".format(chr(31), chr(30)).encode())
 
     def test_resubscribe(self):
         self._initialise()
@@ -98,7 +103,7 @@ class TestRecordDeleted(unittest.TestCase):
 
     def test_retrieve(self):
         self.iostream.write.assert_called_with(
-            "R{0}CR{0}record_A{1}".format(chr(31), chr(30)))
+            "R{0}CR{0}record_A{1}".format(chr(31), chr(30)).encode())
 
     def test_initialize(self):
         self.assertFalse(self.record_A.is_ready)
@@ -126,4 +131,4 @@ class TestRecordDeleted(unittest.TestCase):
         new_record = self.record_handler.get_record('record_A')
         self.assertFalse(new_record is self.record_A)
         self.iostream.write.assert_called_with(
-            "R{0}CR{0}record_A{1}".format(chr(31), chr(30)))
+            "R{0}CR{0}record_A{1}".format(chr(31), chr(30)).encode())

@@ -7,9 +7,14 @@ from deepstreampy.message import message_parser
 from behave import *
 from tornado import testing
 
-import mock
 import json
 import time
+import sys
+
+if sys.version_info.major < 3:
+    import mock
+else:
+    from unittest import mock
 
 PORT = 7777
 HOST = "localhost"
@@ -112,7 +117,7 @@ def server_num_connections(context, num_connections):
 
 @then(u'the last message the server recieved is {message}')
 def server_last_message(context, message):
-    expected = message.replace("|", chr(31)).replace("+", chr(30))
+    expected = message.replace("|", chr(31)).replace("+", chr(30)).encode()
     actual = context.server.get_last_message()
     assert expected == actual, ("Got: {1}, expected: {0}".format(expected,
                                                                  actual))
@@ -145,8 +150,9 @@ def server_num_messages(context, num_messages):
     return
     received = len(context.server.received_messages)
     expected = int(num_messages.encode())
-    assert received == expected,  ("The server has received " + str(received) +
-                                   " messages, not " + str(expected))
+    assert received == expected.encode(),  (
+        "The server has received " + str(received) +
+        " messages, not " + str(expected))
 
 
 @then(u'the client throws a "{event}" error with message "{message}"')
@@ -231,7 +237,7 @@ def unlisten(context, pattern):
 
 @then(u'the server received the message {message}')
 def received_message(context, message):
-    expected = message.replace("|", chr(31)).replace("+", chr(30))
+    expected = message.replace("|", chr(31)).replace("+", chr(30)).encode()
     all_messages = context.server.get_all_messages()
     assert expected in all_messages, all_messages
 

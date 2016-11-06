@@ -8,6 +8,7 @@ from deepstreampy.utils import Undefined, num_types, str_types
 from pyee import EventEmitter
 import re
 import json
+import sys
 from functools import partial
 from copy import deepcopy
 
@@ -395,7 +396,12 @@ class List(EventEmitter, object):
             raise ValueError(error_msg)
 
         for entry in entries:
-            if not isinstance(entry, (str, unicode)):
+            if sys.version_info < (3,):
+                str_types = (str, unicode)
+            else:
+                str_types = (str,)
+
+            if not isinstance(entry, str_types):
                 raise ValueError(error_msg)
 
         if not self._record.is_ready:

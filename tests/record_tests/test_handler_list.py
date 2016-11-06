@@ -4,9 +4,13 @@ from __future__ import unicode_literals
 from deepstreampy import client
 from deepstreampy.record import RecordHandler
 from deepstreampy.constants import connection_state
-
 import unittest
-import mock
+import sys
+
+if sys.version_info.major < 3:
+    import mock
+else:
+    from unittest import mock
 
 HOST = "localhost"
 PORT = 6026
@@ -32,7 +36,7 @@ class RecordTest(unittest.TestCase):
 
     def test_retrieve_list(self):
         self.iostream.write.assert_called_with(
-            "R{0}CR{0}list_A{1}".format(chr(31), chr(30)))
+            "R{0}CR{0}list_A{1}".format(chr(31), chr(30)).encode())
 
     def test_retreive_list_again(self):
         self.assertTrue(self.listA is self.listA2)
@@ -55,7 +59,7 @@ class RecordTest(unittest.TestCase):
         self.on_discard.assert_not_called()
         self.assertFalse(self.listA.is_destroyed)
         self.iostream.write.assert_called_with(
-            "R{0}US{0}list_A{1}".format(chr(31), chr(30)))
+            "R{0}US{0}list_A{1}".format(chr(31), chr(30)).encode())
 
         self.record_handler._handle({
             'topic': 'R',

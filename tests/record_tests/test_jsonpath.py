@@ -3,7 +3,12 @@ from __future__ import unicode_literals
 
 from deepstreampy.record import JSONPath
 import unittest
-import mock
+import sys
+
+if sys.version_info.major < 3:
+    import mock
+else:
+    from unittest import mock
 
 
 class TestGet(unittest.TestCase):
