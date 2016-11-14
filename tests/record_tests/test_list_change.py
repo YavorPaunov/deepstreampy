@@ -40,7 +40,7 @@ class ListChangeTest(unittest.TestCase):
         return callback
 
     def test_create(self):
-        self.assertListEqual(self.list.get_entries(), [])
+        self.assertEqual(self.list.get_entries(), [])
         self.assertTrue(self.list.is_empty)
         callback = mock.Mock()
 

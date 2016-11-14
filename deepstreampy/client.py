@@ -55,7 +55,6 @@ class _Connection(object):
             self._connect_error = exception.real_error
             self._on_error(self._connect_error)
 
-            #if self._state == connection_state.RECONNECTING:
             self._reconnect_timeout = None
             self._try_reconnect()
 

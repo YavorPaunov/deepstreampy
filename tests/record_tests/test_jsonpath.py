@@ -61,15 +61,15 @@ class TestGet(unittest.TestCase):
 
     def test_nonexisting_keys(self):
         json_path = JSONPath(self.test_record, 'does not exist')
-        self.assertIsNone(json_path.get_value())
+        self.assertEqual(json_path.get_value(), None)
 
     def test_nested_nonexisting(self):
         json_path = JSONPath(self.test_record, 'address.number')
-        self.assertIsNone(json_path.get_value())
+        self.assertEqual(json_path.get_value(), None)
 
     def test_nonexisting_array_index(self):
         json_path = JSONPath(self.test_record, 'pastAddresses[3]')
-        self.assertIsNone(json_path.get_value())
+        self.assertEqual(json_path.get_value(), None)
 
     def test_negative_array_index(self):
         json_path = JSONPath(self.test_record, 'pastAddresses[-1]')
@@ -99,13 +99,13 @@ class TestSet(unittest.TestCase):
         json_path = JSONPath(self.record, 'firstname')
         json_path.set_value('John')
         self.assertEquals(json_path.get_value(), 'John')
-        self.assertDictEqual(self.record._data, {'firstname': 'John'})
+        self.assertEqual(self.record._data, {'firstname': 'John'})
 
     def test_nested_values(self):
         json_path = JSONPath(self.record, 'address.street')
         json_path.set_value('someStreet')
         self.assertEquals(json_path.get_value(), 'someStreet')
-        self.assertDictEqual(self.record._data, {
+        self.assertEqual(self.record._data, {
             'address': {
                 'street': 'someStreet'
             }
@@ -121,7 +121,7 @@ class TestSet(unittest.TestCase):
         json_path = JSONPath(self.record, 'lastname')
         json_path.set_value('Smith')
         self.assertEquals(json_path.get_value(), 'Smith')
-        self.assertDictEqual(self.record._data, {'firstname': 'John',
+        self.assertEqual(self.record._data, {'firstname': 'John',
                                                  'lastname': 'Smith'})
 
     def test_extend_lists(self):
@@ -130,7 +130,7 @@ class TestSet(unittest.TestCase):
         json_path = JSONPath(self.record, 'animals[1]')
         json_path.set_value('Emu')
         self.assertEquals(json_path.get_value(), 'Emu')
-        self.assertDictEqual(self.record._data,
+        self.assertEqual(self.record._data,
                              {'firstname': 'John',
                               'animals': ['Bear', 'Emu', 'Ostrich']})
 

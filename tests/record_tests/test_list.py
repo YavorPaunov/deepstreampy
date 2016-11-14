@@ -33,19 +33,19 @@ class ListTest(unittest.TestCase):
         self.list.when_ready(self.ready_callback)
 
     def test_create(self):
-        self.assertIsNotNone(self.list.get_entries())
+        self.assertNotEqual(self.list.get_entries(), None)
         self.iostream.write.assert_called_with(msg("R|CR|someList+").encode())
         self.ready_callback.assert_not_called()
 
     def test_empty(self):
-        self.assertListEqual(self.list.get_entries(), [])
+        self.assertEqual(self.list.get_entries(), [])
         self.assertTrue(self.list.is_empty)
 
     def test_receive_response(self):
         self.record_handler._handle(
             {'topic': 'R', 'action': 'R',
              'data': ['someList', 1, '["entryA", "entryB"]']})
-        self.assertListEqual(self.list.get_entries(), ['entryA', 'entryB'])
+        self.assertEqual(self.list.get_entries(), ['entryA', 'entryB'])
         self.assertEquals(self.ready_callback.call_count, 1)
         self.change_callback.assert_called_with(['entryA', 'entryB'])
         self.assertFalse(self.list.is_empty)
@@ -56,7 +56,7 @@ class ListTest(unittest.TestCase):
              'data': ['someList', 1, '["entryA", "entryB"]']})
         self.list.add_entry('entryC')
         self.change_callback.assert_called_with(['entryA', 'entryB', 'entryC'])
-        self.assertListEqual(self.list.get_entries(),
+        self.assertEqual(self.list.get_entries(),
                              ['entryA', 'entryB', 'entryC'])
         self.iostream.write.assert_called_with(
             msg('R|U|someList|2|["entryA","entryB","entryC"]+').encode())
@@ -65,10 +65,10 @@ class ListTest(unittest.TestCase):
         self.record_handler._handle(
            {'topic': 'R', 'action': 'R',
             'data': ['someList', 1, '["entryA", "entryB"]']})
-        self.assertListEqual(self.list.get_entries(), ['entryA', 'entryB'])
+        self.assertEqual(self.list.get_entries(), ['entryA', 'entryB'])
         self.list.remove_entry('entryB')
         self.change_callback.assert_called_with(['entryA'])
-        self.assertListEqual(self.list.get_entries(), ['entryA'])
+        self.assertEqual(self.list.get_entries(), ['entryA'])
         self.iostream.write.assert_called_with(
             msg('R|U|someList|2|["entryA"]+').encode())
 
@@ -78,7 +78,7 @@ class ListTest(unittest.TestCase):
              'data': ['someList', 1, '["entryA", "entryB"]']})
         self.list.add_entry('entryC', 1)
         self.change_callback.assert_called_with(['entryA', 'entryC', 'entryB'])
-        self.assertListEqual(self.list.get_entries(),
+        self.assertEqual(self.list.get_entries(),
                              ['entryA', 'entryC', 'entryB'])
         self.iostream.write.assert_called_with(
             msg('R|U|someList|2|["entryA","entryC","entryB"]+').encode())
@@ -97,7 +97,7 @@ class ListTest(unittest.TestCase):
             {'topic': 'R', 'action': 'R',
              'data': ['someList', 1, '["entryA", "entryB", "entryC"]']})
         self.list.set_entries(['x', 'y'])
-        self.assertListEqual(self.list.get_entries(), ['x', 'y'])
+        self.assertEqual(self.list.get_entries(), ['x', 'y'])
         self.change_callback.assert_called_with(['x', 'y'])
 
     def test_server_update(self):
@@ -109,20 +109,20 @@ class ListTest(unittest.TestCase):
                                      'data': ['someList', 2, '["x","y"]']})
         self.change_callback.assert_called_with(['x', 'y'])
         self.assertEquals(self.list.version, 2)
-        self.assertListEqual(self.list.get_entries(), ['x', 'y'])
+        self.assertEqual(self.list.get_entries(), ['x', 'y'])
 
     def test_empty_list(self):
         self.record_handler._handle(
            {'topic': 'R', 'action': 'R', 'data': ['someList', 1, '[]']})
-        self.assertListEqual(self.list.get_entries(), [])
+        self.assertEqual(self.list.get_entries(), [])
         self.assertTrue(self.list.is_empty)
 
         self.list.add_entry('entry')
-        self.assertListEqual(self.list.get_entries(), ['entry'])
+        self.assertEqual(self.list.get_entries(), ['entry'])
         self.assertFalse(self.list.is_empty)
 
         self.list.remove_entry('entry')
-        self.assertListEqual(self.list.get_entries(), [])
+        self.assertEqual(self.list.get_entries(), [])
         self.assertTrue(self.list.is_empty)
 
     def test_unsubscribe(self):

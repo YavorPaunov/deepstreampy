@@ -50,9 +50,15 @@ class ConnectionTest(testing.AsyncTestCase):
         connection = client._Connection(self.client, 'localhost', 6666)
         assert connection.state == connection_state.CLOSED
         self.assertEquals(self._get_connection_state_changes(), 0)
-        connect_future = connection.connect()
-        connect_future.set_result(self.iostream)
+        connect_future = mock.Mock()
+        connect_future_config = {'exception.return_value':None,
+                                 'result.return_value':self.iostream}
+        connect_future.configure_mock(**connect_future_config)
+        connect_future.exception.return_value = None
+        connect_future.get_result.return_value = self.iostream
+
         connection._on_open(connect_future)
+        self.assertIs(connection._stream, self.iostream)
         self.assertEquals(connection.state,
                           connection_state.AWAITING_CONNECTION)
         self.assertEquals(self._get_connection_state_changes(), 1)
