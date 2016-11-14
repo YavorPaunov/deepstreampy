@@ -58,7 +58,7 @@ class TestRecordRead(unittest.TestCase):
         self._initialise()
         self.record_A.discard()
         self.assertFalse(self.record_A.is_destroyed)
-        self.assertIsNot(self.record_handler.get_record('record_A'),
+        self.assertFalse(self.record_handler.get_record('record_A') is
                          self.record_A)
 
     def test_discard_ack(self):

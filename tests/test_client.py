@@ -58,7 +58,7 @@ class ConnectionTest(testing.AsyncTestCase):
         connect_future.get_result.return_value = self.iostream
 
         connection._on_open(connect_future)
-        self.assertIs(connection._stream, self.iostream)
+        self.assertTrue(connection._stream is self.iostream)
         self.assertEquals(connection.state,
                           connection_state.AWAITING_CONNECTION)
         self.assertEquals(self._get_connection_state_changes(), 1)
