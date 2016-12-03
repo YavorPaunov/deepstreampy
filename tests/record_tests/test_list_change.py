@@ -15,14 +15,13 @@ if sys.version_info[0] < 3:
 else:
     from unittest import mock
 
-HOST = "localhost"
-PORT = 6026
+URL = "ws://localhost:7777/deepstream"
 
 
 class ListChangeTest(unittest.TestCase):
 
     def setUp(self):
-        self.client = client.Client(HOST, PORT)
+        self.client = client.Client(URL)
         self.iostream = mock.Mock()
         self.client._connection._state = connection_state.OPEN
         self.client._connection._stream = self.iostream

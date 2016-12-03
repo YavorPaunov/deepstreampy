@@ -11,12 +11,13 @@ from deepstreampy import client
 import json
 import unittest
 
+URL = "ws://localhost:7777/deepstream"
 
 class MessageTest(unittest.TestCase):
 
     def setUp(self):
         # This client will never connect
-        self.client = client.Client('localhost', 0)
+        self.client = client.Client(URL)
 
     def test_message_build_and_parse(self):
         """Test building messages and parsing them back correctly."""

@@ -8,7 +8,6 @@ from behave import *
 from tornado import testing
 
 import json
-import time
 import sys
 
 if sys.version_info[0] < 3:
@@ -16,8 +15,7 @@ if sys.version_info[0] < 3:
 else:
     from unittest import mock
 
-PORT = 7777
-HOST = "localhost"
+URL = "ws://localhost:7777/deepstream"
 
 
 class Server:
@@ -39,16 +37,16 @@ class Server:
             self._connection._stream.reset_mock()
 
     def get_last_message(self):
-        return self._connection._stream.write.call_args[0][0]
+        return self._connection._stream.write_message.call_args[0][0]
 
     def get_all_messages(self):
         stream = self._connection._stream
-        all_messages = [msg[0][0] for msg in stream.write.call_args_list]
+        all_messages = [msg[0][0] for msg in stream.write_message.call_args_list]
         return all_messages
 
     def assert_num_messages(self, expected_num):
         if self._connection:
-            actual = self._connection._stream.write.call_count
+            actual = self._connection._stream.write_message.call_count
             assert actual == expected_num, actual
         else:
             assert False
@@ -56,16 +54,12 @@ class Server:
 
 @given(u'the test server is ready')
 def server_ready(context):
-    # server = FakeServer()
-    # server.listen(PORT)
-    # context.server = server
-
     context.server = Server()
 
 
 @given(u'the client is initialised')
 def client_init(context):
-    context.client = client.Client(HOST, PORT)
+    context.client = client.Client(URL)
 
     def error_callback(message, event, t):
         context.client_errors.append(dict(message=message,
@@ -222,6 +216,7 @@ def step_impl(context):
 
 
 @when(u'some time passes')
+@given(u'some time passes')
 def sleep(context):
     def stop_io_loop():
         context.io_loop.stop()
@@ -289,13 +284,13 @@ def client_unsubscribes(context, record_name):
 
 
 @when(u'the client subscribes to "{path}" for the record "{record_name}"')
-def step_impl(context, path, record_name):
+def record_path_subscribe(context, path, record_name):
     record = context.client.record.get_record(record_name)
     record.subscribe(context.subscribe_callback, path)
 
 
 @given(u'the client unsubscribes to "{path}" for the record "{record_name}"')
-def step_impl(context, path, record_name):
+def record_unsubscribe(context, path, record_name):
     record = context.client.record.get_record(record_name)
     record.unsubscribe(context.subscribe_callback, path)
     context.subscribe_callback.reset_mock()
@@ -312,3 +307,53 @@ def client_notified(context):
 @then(u'the client will not be notified of the record change')
 def client_not_notified(context):
     assert not context.subscribe_callback.called
+
+
+@given(u'the client subscribes to an event named "{event_name}"')
+@when(u'the client subscribes to an event named "{event_name}"')
+def event_subscribe(context, event_name):
+    raise NotImplementedError(
+        u'STEP: When the client subscribes to an event named "test2"')
+
+
+@given(u'the client unsubscribes from an event named "{event_name}"')
+@when(u'the client unsubscribes from an event named "{event_name}"')
+def event_unsubscribe(context, event_name):
+    raise NotImplementedError(
+        u'STEP: When the client subscribes to an event named "test2"')
+
+
+@when(u'the client listens to events matching "{event_pattern}"')
+def event_listen(context, event_pattern):
+    raise NotImplementedError(
+        u'STEP: When the client listens to events matching "eventPrefix/.*"')
+
+
+@when(u'the client publishes an event named "{event_name}" with data '
+      '"{event_data}"')
+def event_publish(context, event_name, event_data):
+    raise NotImplementedError(
+        u'STEP: When the client publishes an event named "test1" with data "yetAnotherValue"')
+
+
+@when(u'the client unlistens to events matching "{event_pattern}"')
+def event_unlisten(context, event_pattern):
+    raise NotImplementedError(
+        u'STEP: When the client unlistens to events matching "eventPrefix/.*"')
+
+
+@then(u'the client will be notified of new event match "{event_match}"')
+def event_match_new(context, event_match):
+    raise NotImplementedError(
+        u'STEP: Then the client will be notified of new event match "eventPrefix/foundAMatch"')
+
+
+@then(u'the client will be notified of event match removal "{event_match}"')
+def event_match_removal(context, event_match):
+    raise NotImplementedError(u'STEP: Then the client will be notified of event match removal "eventPrefix/foundAMatch"')
+
+
+@then(u'the client received the event "{event_name}" with data "{event_data}"')
+def event_received(context, event_name, event_data):
+    raise NotImplementedError(
+        u'STEP: Then the client received the event "test1" with data "someValue"')

@@ -12,14 +12,13 @@ if sys.version_info[0] < 3:
 else:
     from unittest import mock
 
-HOST = "localhost"
-PORT = 6026
+URL = "ws://localhost:7777/deepstream"
 
 
 class TestRecordRead(unittest.TestCase):
 
     def setUp(self):
-        self.client = client.Client(HOST, PORT)
+        self.client = client.Client(URL)
         self.iostream = mock.Mock()
         self.client._connection._state = connection_state.OPEN
         self.client._connection._stream = self.iostream
@@ -38,7 +37,7 @@ class TestRecordRead(unittest.TestCase):
             'data': ['record_A', 0, '{}']})
 
     def test_retrieve(self):
-        self.iostream.write.assert_called_with(
+        self.iostream.write_message.assert_called_with(
             "R{0}CR{0}record_A{1}".format(chr(31), chr(30)).encode())
 
     def test_initialise(self):
@@ -51,7 +50,7 @@ class TestRecordRead(unittest.TestCase):
         self.record_A.discard()
         self.on_discard.assert_not_called()
         self.assertFalse(self.record_A.is_destroyed)
-        self.iostream.write.assert_called_with(
+        self.iostream.write_message.assert_called_with(
             "R{0}US{0}record_A{1}".format(chr(31), chr(30)).encode())
 
     def test_resubscribe(self):
@@ -71,7 +70,7 @@ class TestRecordRead(unittest.TestCase):
 
     def tearDown(self):
         self.iostream.reset_mock()
-        self.iostream.write.reset_mock()
+        self.iostream.write_message.reset_mock()
 
 
 class TestRecordDeleted(unittest.TestCase):
@@ -89,7 +88,7 @@ class TestRecordDeleted(unittest.TestCase):
             'data': ['D', 'record_A']})
 
     def setUp(self):
-        self.client = client.Client(HOST, PORT)
+        self.client = client.Client(URL)
         self.iostream = mock.Mock()
         self.client._connection._state = connection_state.OPEN
         self.client._connection._stream = self.iostream
@@ -102,7 +101,7 @@ class TestRecordDeleted(unittest.TestCase):
         self.record_A.on('delete', self.on_delete)
 
     def test_retrieve(self):
-        self.iostream.write.assert_called_with(
+        self.iostream.write_message.assert_called_with(
             "R{0}CR{0}record_A{1}".format(chr(31), chr(30)).encode())
 
     def test_initialize(self):
@@ -130,5 +129,5 @@ class TestRecordDeleted(unittest.TestCase):
 
         new_record = self.record_handler.get_record('record_A')
         self.assertFalse(new_record is self.record_A)
-        self.iostream.write.assert_called_with(
+        self.iostream.write_message.assert_called_with(
             "R{0}CR{0}record_A{1}".format(chr(31), chr(30)).encode())

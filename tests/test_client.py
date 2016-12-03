@@ -18,8 +18,7 @@ if sys.version_info[0] < 3:
 else:
     from unittest import mock
 
-HOST = "localhost"
-PORT = 6029
+URL = "ws://localhost:7777/deepstream"
 
 test_server_exceptions = []
 
@@ -40,19 +39,19 @@ class ConnectionTest(testing.AsyncTestCase):
         return count
 
     def _get_sent_messages(self):
-        for call_args in self.iostream.write.call_args_list:
+        for call_args in self.iostream.write_message.call_args_list:
             yield call_args[0]
 
     def _get_last_sent_message(self):
-        return self.iostream.write.call_args[0][0]
+        return self.iostream.write_message.call_args[0][0]
 
     def test_connects(self):
-        connection = client._Connection(self.client, 'localhost', 6666)
+        connection = client._Connection(self.client, URL)
         assert connection.state == connection_state.CLOSED
         self.assertEquals(self._get_connection_state_changes(), 0)
         connect_future = mock.Mock()
-        connect_future_config = {'exception.return_value':None,
-                                 'result.return_value':self.iostream}
+        connect_future_config = {'exception.return_value': None,
+                                 'result.return_value': self.iostream}
         connect_future.configure_mock(**connect_future_config)
         connect_future.exception.return_value = None
         connect_future.get_result.return_value = self.iostream
@@ -65,7 +64,7 @@ class ConnectionTest(testing.AsyncTestCase):
         connection._on_data('C{0}A{1}'.format(chr(31), chr(30)))
         self.assertEquals(connection.state,
                           connection_state.AWAITING_AUTHENTICATION)
-        self.iostream.write.assert_not_called()
+        self.iostream.write_message.assert_not_called()
 
         connection.authenticate({'user': 'Anon'}, self.auth_callback)
         self.assertEquals(connection.state,
@@ -83,12 +82,12 @@ class ConnectionTest(testing.AsyncTestCase):
         self.assertEquals(self._get_connection_state_changes(), 4)
 
         connection.send_message('R', 'S', ['test1'])
-        self.iostream.write.assert_called_with(
+        self.iostream.write_message.assert_called_with(
             'R{0}S{0}test1{1}'.format(chr(31), chr(30)).encode())
 
-        closed_callback = self.iostream.set_close_callback.call_args[0][0]
         connection.close()
-        closed_callback()
+        connection._on_close()
+
         self.assertEquals(connection.state,
                           connection_state.CLOSED)
         self.assertEquals(self._get_connection_state_changes(), 5)

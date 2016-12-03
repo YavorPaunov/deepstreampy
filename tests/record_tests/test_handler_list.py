@@ -12,15 +12,14 @@ if sys.version_info[0] < 3:
 else:
     from unittest import mock
 
-HOST = "localhost"
-PORT = 6026
+URL = "ws://localhost:7777/deepstream"
 
 
 class RecordTest(unittest.TestCase):
 
     def setUp(self):
         super(RecordTest, self).setUp()
-        self.client = client.Client(HOST, PORT)
+        self.client = client.Client(URL)
         self.iostream = mock.Mock()
         self.client._connection._state = connection_state.OPEN
         self.client._connection._stream = self.iostream
@@ -35,7 +34,7 @@ class RecordTest(unittest.TestCase):
         self.listA.on('discard', self.on_discard)
 
     def test_retrieve_list(self):
-        self.iostream.write.assert_called_with(
+        self.iostream.write_message.assert_called_with(
             "R{0}CR{0}list_A{1}".format(chr(31), chr(30)).encode())
 
     def test_retreive_list_again(self):
@@ -58,7 +57,7 @@ class RecordTest(unittest.TestCase):
         self.listA2.discard()
         self.on_discard.assert_not_called()
         self.assertFalse(self.listA.is_destroyed)
-        self.iostream.write.assert_called_with(
+        self.iostream.write_message.assert_called_with(
             "R{0}US{0}list_A{1}".format(chr(31), chr(30)).encode())
 
         self.record_handler._handle({

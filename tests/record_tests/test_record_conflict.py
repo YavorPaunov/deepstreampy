@@ -14,9 +14,7 @@ if sys.version_info[0] < 3:
 else:
     from unittest import mock
 
-
-HOST = "localhost"
-PORT = 6026
+URL = "ws://localhost:7777/deepstream"
 
 
 class TestMergeConflict(unittest.TestCase):
@@ -25,7 +23,7 @@ class TestMergeConflict(unittest.TestCase):
         options = {
             'merge_strategy': merge_strategies.remote_wins
         }
-        self.client = client.Client(HOST, PORT)
+        self.client = client.Client(URL)
         self.iostream = mock.Mock()
         self.client._connection._state = connection_state.OPEN
         self.client._connection._stream = self.iostream
@@ -57,6 +55,6 @@ class TestMergeConflict(unittest.TestCase):
         self.record._on_message(message)
 
         self.error_callback.assert_not_called()
-        self.iostream.write.assert_called_with(
+        self.iostream.write_message.assert_called_with(
             msg('R|U|someRecord|6|{"reason":"skippedVersion"}+').encode())
         self.subscribe_callback.assert_called_with({'reason': 'skippedVersion'})

@@ -13,15 +13,14 @@ if sys.version_info[0] < 3:
 else:
     from unittest import mock
 
-HOST = "localhost"
-PORT = 6026
+URL = "ws://localhost:7777/deepstream"
 
 
 class RecordTest(unittest.TestCase):
 
     def setUp(self):
         super(RecordTest, self).setUp()
-        self.client = client.Client(HOST, PORT)
+        self.client = client.Client(URL)
         self.iostream = mock.Mock()
         self.client._connection._state = connection_state.OPEN
         self.client._connection._stream = self.iostream
@@ -37,14 +36,14 @@ class RecordTest(unittest.TestCase):
 
     def test_create_record(self):
         self.assertEqual(self.record.get(), {})
-        self.iostream.write.assert_called_with(
+        self.iostream.write_message.assert_called_with(
             "R{0}CR{0}testRecord{1}".format(chr(31), chr(30)).encode())
 
     def test_send_update_message(self):
         self.record.set({'firstname': 'John'})
         expected = ("R{0}U{0}testRecord{0}1{0}{{\"firstname\":\"John\"}}{1}"
                     .format(chr(31), chr(30)).encode())
-        self.iostream.write.assert_called_with(expected)
+        self.iostream.write_message.assert_called_with(expected)
         self.assertEqual(self.record.get(), {'firstname': 'John'})
         self.assertEquals(self.record.version, 1)
 
@@ -52,7 +51,7 @@ class RecordTest(unittest.TestCase):
         self.record.set('Smith', 'lastname')
         expected = ("R{0}P{0}testRecord{0}1{0}lastname{0}SSmith{1}"
                     .format(chr(31), chr(30)).encode())
-        self.iostream.write.assert_called_with(expected)
+        self.iostream.write_message.assert_called_with(expected)
 
     def test_delete_value(self):
         self.record.set({'firstname': 'John', 'lastname': 'Smith'})

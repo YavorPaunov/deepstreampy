@@ -8,21 +8,19 @@ from deepstreampy.constants import connection_state, topic, actions
 from deepstreampy.constants import event as event_constants
 from deepstreampy.constants import message as message_constants
 
-from tornado import ioloop, tcpclient, concurrent
+from tornado import ioloop, tcpclient, concurrent, websocket
 import socket
 import errno
 
 
 class _Connection(object):
 
-    def __init__(self, client, host, port):
+    def __init__(self, client, url):
         self._io_loop = ioloop.IOLoop.current()
 
         self._client = client
-        self._host = host
-        self._port = port
+        self._url = url
         self._stream = None
-        self._url = "{0}:{1}".format(host, port)
 
         self._auth_params = None
         self._auth_callback = None
@@ -43,16 +41,17 @@ class _Connection(object):
 
     def connect(self, callback=None):
         self._connect_callback = callback
-        connect_future = tcpclient.TCPClient().connect(self._host,
-                                                       self._port,
-                                                       socket.AF_INET)
-        self._io_loop.add_future(connect_future, self._on_open)
+        connect_future = websocket.websocket_connect(
+            self._url,
+            self._io_loop,
+            callback=self._on_open,
+            on_message_callback=self._on_data)
         return connect_future
 
     def _on_open(self, f):
         exception = f.exception()
         if exception:
-            self._connect_error = exception.real_error
+            self._connect_error = exception
             self._on_error(self._connect_error)
 
             self._reconnect_timeout = None
@@ -61,16 +60,14 @@ class _Connection(object):
             return
 
         self._stream = f.result()
-        self._stream.set_close_callback(self._on_close)
-        self._stream.read_until_close(None, self._on_data)
         self._set_state(connection_state.AWAITING_CONNECTION)
 
         if self._connect_callback:
             self._connect_callback()
 
-
     def _on_error(self, error):
         self._set_state(connection_state.ERROR)
+
         if error.errno in (errno.ECONNRESET, errno.ECONNREFUSED):
             msg = "Can't connect! Deepstream server unreachable on " + self._url
         else:
@@ -117,7 +114,7 @@ class _Connection(object):
         raw_auth_message = message_builder.get_message(topic.AUTH,
                                                        actions.REQUEST,
                                                        [self._auth_params])
-        self._stream.write(raw_auth_message.encode())
+        self._stream.write_message(raw_auth_message.encode())
 
     def _handle_auth_response(self, message):
         message_data = message['data']
@@ -225,7 +222,7 @@ class _Connection(object):
         All messages are passed onto and handled by tornado.
         """
         if self._state == connection_state.OPEN:
-            self._stream.write(raw_message.encode())
+            self._stream.write_message(raw_message.encode())
         else:
             self._queued_messages.append(raw_message.encode())
 
@@ -235,14 +232,18 @@ class _Connection(object):
 
         while self._queued_messages:
             raw_message = self._queued_messages.popleft()
-            self._stream.write(raw_message)
+            self._stream.write_message(raw_message)
 
     def _on_data(self, data):
+        if data is None:
+            self._on_close()
+
         full_buffer = self._message_buffer + data
         split_buffer = full_buffer.rsplit(message_constants.MESSAGE_SEPERATOR,
                                           1)
         if len(split_buffer) > 1:
             self._message_buffer = split_buffer[1]
+
         raw_messages = split_buffer[0]
 
         parsed_messages = message_parser.parse(raw_messages, self._client)
@@ -271,8 +272,6 @@ class _Connection(object):
             self._reconnection_attempt += 1
         else:
             self._clear_reconnect()
-            #self._on_error(exception.real_error)
-
 
     def _clear_reconnect(self):
         self._io_loop.remove_callout(self._reconnect_timeout)
@@ -291,15 +290,14 @@ class Client(EventEmitter, object):
     deepstream.io Python client based on tornado.
     """
 
-    def __init__(self, host, port):
+    def __init__(self, url):
         """Creates the client but doesn't connect to the server.
 
         Args:
-            host (str): The host to connect to
-            port (str): The port to use to connect
+            url (str): The url to connect to
         """
         super(Client, self).__init__()
-        self._connection = _Connection(self, host, port)
+        self._connection = _Connection(self, url)
         self._record = RecordHandler({}, self._connection, self)
         self._message_callbacks = dict()
 
