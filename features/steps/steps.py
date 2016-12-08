@@ -240,6 +240,7 @@ def received_message(context, message):
 @when(u'the connection to the server is lost')
 def connection_lost(context):
     context.client._connection._on_close()
+    context.server.reset_messages()
 
 
 @when(u'the connection to the server is reestablished')
@@ -312,48 +313,56 @@ def client_not_notified(context):
 @given(u'the client subscribes to an event named "{event_name}"')
 @when(u'the client subscribes to an event named "{event_name}"')
 def event_subscribe(context, event_name):
-    raise NotImplementedError(
-        u'STEP: When the client subscribes to an event named "test2"')
+    context.event_callbacks[event_name] = mock.Mock()
+    context.client.event.subscribe(event_name,
+                                   context.event_callbacks[event_name])
 
 
 @given(u'the client unsubscribes from an event named "{event_name}"')
 @when(u'the client unsubscribes from an event named "{event_name}"')
 def event_unsubscribe(context, event_name):
-    raise NotImplementedError(
-        u'STEP: When the client subscribes to an event named "test2"')
+    context.client.event.unsubscribe(event_name,
+                                     context.event_callbacks[event_name])
+    del context.event_callbacks[event_name]
 
 
 @when(u'the client listens to events matching "{event_pattern}"')
 def event_listen(context, event_pattern):
-    raise NotImplementedError(
-        u'STEP: When the client listens to events matching "eventPrefix/.*"')
+    context.listen_callback = mock.Mock()
+    context.client.event.listen(event_pattern,
+                                context.listen_callback)
 
 
 @when(u'the client publishes an event named "{event_name}" with data '
       '"{event_data}"')
 def event_publish(context, event_name, event_data):
-    raise NotImplementedError(
-        u'STEP: When the client publishes an event named "test1" with data "yetAnotherValue"')
+    context.client.event.emit(event_name, event_data)
 
 
 @when(u'the client unlistens to events matching "{event_pattern}"')
 def event_unlisten(context, event_pattern):
-    raise NotImplementedError(
-        u'STEP: When the client unlistens to events matching "eventPrefix/.*"')
+    context.client.event.unlisten(event_pattern)
 
 
 @then(u'the client will be notified of new event match "{event_match}"')
 def event_match_new(context, event_match):
-    raise NotImplementedError(
-        u'STEP: Then the client will be notified of new event match "eventPrefix/foundAMatch"')
+    found_match = False
+    for args in context.listen_callback.call_args_list:
+        found_match = (event_match, True) == args[0][:2]
+    assert found_match
 
 
 @then(u'the client will be notified of event match removal "{event_match}"')
 def event_match_removal(context, event_match):
-    raise NotImplementedError(u'STEP: Then the client will be notified of event match removal "eventPrefix/foundAMatch"')
+    context.listen_callback.assert_called_with(event_match, False)
 
 
 @then(u'the client received the event "{event_name}" with data "{event_data}"')
 def event_received(context, event_name, event_data):
-    raise NotImplementedError(
-        u'STEP: Then the client received the event "test1" with data "someValue"')
+    callback = context.event_callbacks[event_name]
+    callback.assert_called_with(event_data)
+
+
+@then(u'the server did not recieve any messages')
+def server_no_message(context):
+    assert len(context.server.get_all_messages()) == 0

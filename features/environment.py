@@ -9,11 +9,17 @@ def before_scenario(context, scenario):
     context.client = None
     context.client_errors = []
     context.io_loop = ioloop.IOLoop.current()
+    context.event_callbacks = {}
+    context.listen_callback = None
+
 
 def after_scenario(context, scenario):
     context.server = None
     context.client = None
     context.login_future = None
+    context.event_callbacks = {}
+    context.listen_callback = None
+
 
 def ___after_step(context, step):
     current_loop = ioloop.IOLoop.current()

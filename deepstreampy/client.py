@@ -7,9 +7,9 @@ from deepstreampy.message import message_builder, message_parser
 from deepstreampy.constants import connection_state, topic, actions
 from deepstreampy.constants import event as event_constants
 from deepstreampy.constants import message as message_constants
+from deepstreampy.event import EventHandler
 
-from tornado import ioloop, tcpclient, concurrent, websocket
-import socket
+from tornado import ioloop, concurrent, websocket
 import errno
 
 
@@ -188,7 +188,6 @@ class _Connection(object):
                 self._connection_auth_timeout = True
                 self._client._on_error(topic.CONNECTION, data[0], data[1])
 
-
     def _get_auth_data(self, data):
         if data:
             return message_parser.convert_typed(data, self._client)
@@ -274,7 +273,7 @@ class _Connection(object):
             self._clear_reconnect()
 
     def _clear_reconnect(self):
-        self._io_loop.remove_callout(self._reconnect_timeout)
+        self._io_loop.remove_timeout(self._reconnect_timeout)
         self._reconnect_timeout = None
         self._reconnection_attempt = 0
 
@@ -298,6 +297,7 @@ class Client(EventEmitter, object):
         """
         super(Client, self).__init__()
         self._connection = _Connection(self, url)
+        self._event = EventHandler({}, self._connection, self)
         self._record = RecordHandler({}, self._connection, self)
         self._message_callbacks = dict()
 
@@ -305,7 +305,7 @@ class Client(EventEmitter, object):
             raise NotImplementedError("Topic " + topic + " not yet implemented")
 
         self._message_callbacks[
-            topic.EVENT] = lambda x: not_implemented_callback(topic.EVENT)
+            topic.EVENT] = self._event._handle
 
         self._message_callbacks[
             topic.RPC] = lambda x: not_implemented_callback(topic.RPC)
@@ -400,6 +400,10 @@ class Client(EventEmitter, object):
     @property
     def record(self):
         return self._record
+
+    @property
+    def event(self):
+        return self._event
 
     @property
     def io_loop(self):

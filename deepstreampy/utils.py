@@ -1,6 +1,7 @@
 from deepstreampy.constants import actions as action_constants, event as event_constants
 from deepstreampy.constants import connection_state
 from functools import partial
+from pyee import EventEmitter
 import sys
 
 num_types = ((int, long, float, complex) if sys.version_info < (3,) else
@@ -165,6 +166,49 @@ class ResubscribeNotifier(object):
         elif state == connection_state.OPEN and self._is_reconnecting:
             self._is_reconnecting = False
             self._resubscribe()
+
+
+class AckTimeoutRegistry(EventEmitter):
+
+    def __init__(self, client, topic, timeout_duration):
+        self._client = client
+        self._topic = topic
+        self._timeout_duration = timeout_duration
+        self._register = {}
+
+    def add(self, name, action=None):
+        unique_name = (action or "") + name
+
+        self.remove(name, action)
+        self._client.io_loop.call_later(self._timeout_duration,
+                                        partial(self._on_timeout,
+                                                unique_name,
+                                                name))
+        self._register[unique_name] = None
+
+    def remove(self, name, action=None):
+        unique_name = (action or "") + name
+        if unique_name in self._register:
+            self.clear({'data': [action, name]})
+
+    def clear(self, message):
+        name = message['data'][1]
+        unique_name = (message['data'][0] or "") + name
+        timeout = self._register.get(unique_name, self._register.get(name))
+
+        if timeout:
+            self._client.io_loop.remove_timeout(timeout)
+        else:
+            self._client._on_error(self._topic,
+                                   event_constants.UNSOLICITED_MESSAGE,
+                                   message['raw'])
+
+    def _on_timeout(self, unique_name, name):
+        del self._register[unique_name]
+        msg = "No ACK message received in time for " + name
+        self._client._on_error(self._topic, event_constants.ACK_TIMEOUT, msg)
+        self.emit('timeout', name)
+
 
 
 def _pad_list(l, index, value):
