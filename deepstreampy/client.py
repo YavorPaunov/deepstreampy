@@ -54,7 +54,6 @@ class _Connection(object):
             self._connect_error = exception
             self._on_error(self._connect_error)
 
-            self._reconnect_timeout = None
             self._try_reconnect()
 
             return
@@ -259,9 +258,6 @@ class _Connection(object):
                 self._client._on_message(parsed_messages[0])
 
     def _try_reconnect(self):
-        if self._reconnect_timeout is not None:
-            return
-
         # TODO: Use options to set max reconnect attempts
         if self._reconnection_attempt < 3:
             self._set_state(connection_state.RECONNECTING)

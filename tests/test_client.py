@@ -12,6 +12,7 @@ from deepstreampy.constants import event as event_constants
 from deepstreampy import client
 from tornado import testing
 import sys
+import errno
 
 if sys.version_info[0] < 3:
     import mock
@@ -92,6 +93,27 @@ class ConnectionTest(testing.AsyncTestCase):
                           connection_state.CLOSED)
         self.assertEquals(self._get_connection_state_changes(), 5)
 
+    def test_connect_error(self):
+        connection = client._Connection(self.client, URL)
+        assert connection.state == connection_state.CLOSED
+        self.assertEquals(self._get_connection_state_changes(), 0)
+        connect_future = mock.Mock()
+        connect_future_config = {'exception.return_value': None,
+                                 'result.return_value': self.iostream}
+        connect_future.configure_mock(**connect_future_config)
+        connect_future.exception.return_value = IOError(
+            (errno.ECONNREFUSED, "Connection refused"))
+        connect_future.get_result.return_value = self.iostream
+
+        connection._on_open(connect_future)
+        self.assertEquals(connection.state,
+                          connection_state.RECONNECTING)
+        self.assertIsNotNone(connection._reconnect_timeout)
+        connection._on_open(connect_future)
+        connection._on_open(connect_future)
+        connection._on_open(connect_future)
+        self.assertEquals(connection.state,
+                          connection_state.ERROR)
 
 if __name__ == '__main__':
     testing.unittest.main()
