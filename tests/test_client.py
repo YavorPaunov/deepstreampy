@@ -108,7 +108,7 @@ class ConnectionTest(testing.AsyncTestCase):
         connection._on_open(connect_future)
         self.assertEquals(connection.state,
                           connection_state.RECONNECTING)
-        self.assertIsNotNone(connection._reconnect_timeout)
+        self.assertTrue(connection._reconnect_timeout is not None)
         connection._on_open(connect_future)
         connection._on_open(connect_future)
         connection._on_open(connect_future)
