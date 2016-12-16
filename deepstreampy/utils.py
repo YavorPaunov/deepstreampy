@@ -171,6 +171,7 @@ class ResubscribeNotifier(object):
 class AckTimeoutRegistry(EventEmitter):
 
     def __init__(self, client, topic, timeout_duration):
+        super(AckTimeoutRegistry, self).__init__()
         self._client = client
         self._topic = topic
         self._timeout_duration = timeout_duration
@@ -219,3 +220,14 @@ class Undefined(object):
     def __repr__(self):
         return 'Undefined'
 Undefined = Undefined()
+
+
+def itoa(num, radix):
+    """
+    Convert int to a sts representation in an arbitrary base, up to 36.
+    """
+    result = ""
+    while num > 0:
+        result = "0123456789abcdefghijklmnopqrstuvwxyz"[num % radix] + result
+        num /= radix
+    return result

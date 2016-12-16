@@ -33,12 +33,10 @@ class EventsTest(unittest.TestCase):
     def test_handler(self):
         self.iostream.write_message.assert_not_called()
         self.client.event.emit('myEvent', 6)
-        self.iostream.write_message.assert_called_with(
-            msg('E|EVT|myEvent|N6+').encode())
+        self.iostream.write_message.assert_called_with(msg('E|EVT|myEvent|N6+'))
 
         self.client.event.subscribe('myEvent', self.event_callback)
-        self.iostream.write_message.assert_called_with(
-            msg('E|S|myEvent+').encode())
+        self.iostream.write_message.assert_called_with(msg('E|S|myEvent+'))
 
         self.client.on('error', self.error_callback)
         # self.error_callback.assert_called_with(
@@ -81,8 +79,7 @@ class EventsTest(unittest.TestCase):
                                    'action': 'SP',
                                    'data': ['a/.*', 'a/1']})
 
-        self.iostream.write_message.assert_called_with(
-            msg('E|LA|a/.*|a/1+').encode())
+        self.iostream.write_message.assert_called_with(msg('E|LA|a/.*|a/1+'))
 
     def test_reject(self):
         def listen_callback(data, is_subscribed, response):
@@ -93,8 +90,7 @@ class EventsTest(unittest.TestCase):
                                    'action': 'SP',
                                    'data': ['b/.*', 'b/1']})
 
-        self.iostream.write_message.assert_called_with(
-            msg('E|LR|b/.*|b/1+').encode())
+        self.iostream.write_message.assert_called_with(msg('E|LR|b/.*|b/1+'))
 
     def test_accept_and_discard(self):
         def listen_callback(data, is_subscribed, response=None):
@@ -110,8 +106,7 @@ class EventsTest(unittest.TestCase):
                                    'action': 'SP',
                                    'data': ['b/.*', 'b/2']})
 
-        self.iostream.write_message.assert_called_with(
-            msg('E|LA|b/.*|b/2+').encode())
+        self.iostream.write_message.assert_called_with(msg('E|LA|b/.*|b/2+'))
 
     def test_accept_unlisten(self):
 
@@ -123,12 +118,10 @@ class EventsTest(unittest.TestCase):
                                    'action': 'SP',
                                    'data': ['a/.*', 'a/1']})
 
-        self.iostream.write_message.assert_called_with(
-            msg('E|LA|a/.*|a/1+').encode())
+        self.iostream.write_message.assert_called_with(msg('E|LA|a/.*|a/1+'))
 
         self.client.event.unlisten('a/.*')
-        self.iostream.write_message.assert_called_with(
-            msg('E|UL|a/.*+').encode())
+        self.iostream.write_message.assert_called_with(msg('E|UL|a/.*+'))
 
         self.iostream.reset_mock()
         self.client.event._handle({'topic': 'E',

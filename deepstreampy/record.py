@@ -1,3 +1,6 @@
+from __future__ import absolute_import, division, print_function, with_statement
+from __future__ import unicode_literals
+
 from deepstreampy.constants import topic as topic_constants
 from deepstreampy.constants import actions as action_constants
 from deepstreampy.constants import event as event_constants
@@ -8,7 +11,6 @@ from deepstreampy.utils import Undefined, num_types, str_types
 from pyee import EventEmitter
 import re
 import json
-import sys
 from functools import partial
 from copy import deepcopy
 
@@ -396,11 +398,6 @@ class List(EventEmitter, object):
             raise ValueError(error_msg)
 
         for entry in entries:
-            if sys.version_info < (3,):
-                str_types = (str, unicode)
-            else:
-                str_types = (str,)
-
             if not isinstance(entry, str_types):
                 raise ValueError(error_msg)
 
@@ -502,7 +499,6 @@ class List(EventEmitter, object):
 
         if self._has_remove_listener:
             for entry in before:
-                    #for i, n in enumerate(before[entry]):
                 if (entry not in after or
                         len(after[entry]) < len(before[entry])):
                     for n in before[entry]:

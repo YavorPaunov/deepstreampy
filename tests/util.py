@@ -5,7 +5,7 @@ from tornado import tcpserver, concurrent
 
 
 def msg(value):
-    return value.replace("|", chr(31)).replace("+", chr(30))
+    return value.replace("|", chr(31)).replace("+", chr(30)).encode()
 
 
 class FakeServer(tcpserver.TCPServer):

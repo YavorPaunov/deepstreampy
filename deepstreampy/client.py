@@ -1,16 +1,21 @@
 from __future__ import absolute_import, division, print_function, with_statement
 from __future__ import unicode_literals
-from pyee import EventEmitter
-from collections import deque
+
 from deepstreampy.record import RecordHandler
+from deepstreampy.event import EventHandler
+from deepstreampy.rpc import RPCHandler
 from deepstreampy.message import message_builder, message_parser
 from deepstreampy.constants import connection_state, topic, actions
 from deepstreampy.constants import event as event_constants
 from deepstreampy.constants import message as message_constants
-from deepstreampy.event import EventHandler
+from deepstreampy.utils import itoa
 
+from pyee import EventEmitter
+from collections import deque
 from tornado import ioloop, concurrent, websocket
 import errno
+import time
+import random
 
 
 class _Connection(object):
@@ -280,7 +285,7 @@ class _Connection(object):
             self._try_reconnect()
 
 
-class Client(EventEmitter, object):
+class Client(EventEmitter):
     """
     deepstream.io Python client based on tornado.
     """
@@ -294,6 +299,7 @@ class Client(EventEmitter, object):
         super(Client, self).__init__()
         self._connection = _Connection(self, url)
         self._event = EventHandler({}, self._connection, self)
+        self._rpc = RPCHandler({}, self._connection, self)
         self._record = RecordHandler({}, self._connection, self)
         self._message_callbacks = dict()
 
@@ -304,7 +310,7 @@ class Client(EventEmitter, object):
             topic.EVENT] = self._event._handle
 
         self._message_callbacks[
-            topic.RPC] = lambda x: not_implemented_callback(topic.RPC)
+            topic.RPC] = self._rpc._handle
 
         self._message_callbacks[
             topic.RECORD] = self._record._handle
@@ -350,6 +356,11 @@ class Client(EventEmitter, object):
         """
         return self._connection.authenticate(auth_params, callback)
 
+    def get_uid(self):
+        timestamp = itoa(int(time.time() * 1000), 36)
+        random_str = itoa(int(random.random() * 10000000000000000), 36)
+        return "{0}-{1}".format(timestamp, random_str)
+
     def _on_message(self, message):
         if message['topic'] in self._message_callbacks:
             self._message_callbacks[message['topic']](message)
@@ -377,7 +388,6 @@ class Client(EventEmitter, object):
                                                 topic.ERROR,
                                                 error_msg)
                 )
-
         if self.listeners('error'):
             self.emit('error', msg, event, topic)
             self.emit(event, topic, msg)
@@ -400,6 +410,10 @@ class Client(EventEmitter, object):
     @property
     def event(self):
         return self._event
+
+    @property
+    def rpc(self):
+        return self._rpc
 
     @property
     def io_loop(self):

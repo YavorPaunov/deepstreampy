@@ -56,5 +56,5 @@ class TestMergeConflict(unittest.TestCase):
 
         self.error_callback.assert_not_called()
         self.iostream.write_message.assert_called_with(
-            msg('R|U|someRecord|6|{"reason":"skippedVersion"}+').encode())
+            msg('R|U|someRecord|6|{"reason":"skippedVersion"}+'))
         self.subscribe_callback.assert_called_with({'reason': 'skippedVersion'})

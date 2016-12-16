@@ -9,6 +9,7 @@ from tornado import testing
 
 import json
 import sys
+import re
 
 if sys.version_info[0] < 3:
     import mock
@@ -41,7 +42,8 @@ class Server:
 
     def get_all_messages(self):
         stream = self._connection._stream
-        all_messages = [msg[0][0] for msg in stream.write_message.call_args_list]
+        all_messages = [msg[0][0]
+                        for msg in stream.write_message.call_args_list]
         return all_messages
 
     def assert_num_messages(self, expected_num):
@@ -60,6 +62,7 @@ def server_ready(context):
 @given(u'the client is initialised')
 def client_init(context):
     context.client = client.Client(URL)
+    context.client.get_uid = mock.Mock(return_value='<UID>')
 
     def error_callback(message, event, t):
         context.client_errors.append(dict(message=message,
@@ -113,6 +116,10 @@ def server_num_connections(context, num_connections):
 def server_last_message(context, message):
     expected = message.replace("|", chr(31)).replace("+", chr(30)).encode()
     actual = context.server.get_last_message()
+    #if "<UID>" in expected:
+    #    actual = re.sub(r"\x1F[a-z0-9]+\-[a-z0-9]+\x1F",
+    #                    "{0}<UID>{0}".format(chr(31)),
+    #                    actual)
     assert expected == actual, ("Got: {1}, expected: {0}".format(expected,
                                                                  actual))
 
@@ -154,6 +161,7 @@ def client_error(context, event, message):
     matching_errors = [e for e in context.client_errors if
                        e['event'] == event and
                        e['message'] == message]
+    print("ERR", context.client_errors)
     assert len(matching_errors) > 0, context.client_errors
 
 
@@ -221,7 +229,7 @@ def sleep(context):
     def stop_io_loop():
         context.io_loop.stop()
 
-    context.io_loop.call_later(1, stop_io_loop)
+    context.io_loop.call_later(2.5, stop_io_loop)
     context.io_loop.start()
 
 
@@ -366,3 +374,68 @@ def event_received(context, event_name, event_data):
 @then(u'the server did not recieve any messages')
 def server_no_message(context):
     assert len(context.server.get_all_messages()) == 0
+
+
+@when(u'the client provides a RPC called "{rpc_name}"')
+@testing.gen_test
+def rpc_provide(context, rpc_name):
+    context.rpc_provide_callback = mock.Mock()
+    context.client.rpc.provide(rpc_name, context.rpc_provide_callback)
+
+
+@then(u'the client recieves a request for a RPC called "{rpc_name}" with data '
+      '"{data}"')
+def rpc_request(context, rpc_name, data):
+    context.rpc_provide_callback.called_once_with(data)
+    context.rpc_response = context.rpc_provide_callback.call_args[0][1]
+    context.rpc_provide_callback.reset_mock()
+
+
+@when(u'the client responds to the RPC "{rpc_name}" with data "{data}"')
+def rpc_respond_data(context, rpc_name, data):
+    if not context.rpc_response:
+        context.rpc_response = context.rpc_provide_callback.call_args[0][1]
+
+    context.rpc_response.send(data)
+
+
+@when(u'the client responds to the RPC "{rpc_name}" with the error "{error}"')
+def rpc_respond_error(context, rpc_name, error):
+    if not context.rpc_response:
+        context.rpc_response = context.rpc_provide_callback.call_args[0][1]
+
+    context.rpc_response.error(error)
+
+
+@when(u'the client rejects the RPC "{rpc_name}"')
+def rpc_reject(context, rpc_name):
+    if not context.rpc_response:
+        context.rpc_response = context.rpc_provide_callback.call_args[0][1]
+    context.rpc_response.reject()
+
+
+@when(u'the client stops providing a RPC called "{rpc_name}"')
+def rpc_unprovide(context, rpc_name):
+    context.client.rpc.unprovide(rpc_name)
+
+
+@when(u'the client requests RPC "{rpc_name}" with data "{data}"')
+def rpc_client_request(context, rpc_name, data):
+    context.rpc_request_callback = mock.Mock()
+    context.client.rpc.make(rpc_name, data, context.rpc_request_callback)
+
+
+@then(u'the client recieves a successful RPC callback for "{rpc_name}" with data "{data}"')
+def rpc_callback(context, rpc_name, data):
+    context.rpc_request_callback.assert_called_once_with(None, data)
+
+
+@then(u'the client recieves an error RPC callback for "{rpc_name}" with the '
+      'message "{error}"')
+def rpc_callback_error(context, rpc_name, error):
+    found_error = False
+    for err in context.rpc_request_callback.call_args_list:
+        if err[0][0] == error:
+            found_error = True
+
+    assert found_error, "Error {0} not thrown".format(error)

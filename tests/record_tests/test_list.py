@@ -33,7 +33,7 @@ class ListTest(unittest.TestCase):
 
     def test_create(self):
         self.assertNotEqual(self.list.get_entries(), None)
-        self.iostream.write_message.assert_called_with(msg("R|CR|someList+").encode())
+        self.iostream.write_message.assert_called_with(msg("R|CR|someList+"))
         self.ready_callback.assert_not_called()
 
     def test_empty(self):
@@ -56,9 +56,9 @@ class ListTest(unittest.TestCase):
         self.list.add_entry('entryC')
         self.change_callback.assert_called_with(['entryA', 'entryB', 'entryC'])
         self.assertEqual(self.list.get_entries(),
-                             ['entryA', 'entryB', 'entryC'])
+                         ['entryA', 'entryB', 'entryC'])
         self.iostream.write_message.assert_called_with(
-            msg('R|U|someList|2|["entryA","entryB","entryC"]+').encode())
+            msg('R|U|someList|2|["entryA","entryB","entryC"]+'))
 
     def test_remove(self):
         self.record_handler._handle(
@@ -69,7 +69,7 @@ class ListTest(unittest.TestCase):
         self.change_callback.assert_called_with(['entryA'])
         self.assertEqual(self.list.get_entries(), ['entryA'])
         self.iostream.write_message.assert_called_with(
-            msg('R|U|someList|2|["entryA"]+').encode())
+            msg('R|U|someList|2|["entryA"]+'))
 
     def test_insert(self):
         self.record_handler._handle(
@@ -78,9 +78,9 @@ class ListTest(unittest.TestCase):
         self.list.add_entry('entryC', 1)
         self.change_callback.assert_called_with(['entryA', 'entryC', 'entryB'])
         self.assertEqual(self.list.get_entries(),
-                             ['entryA', 'entryC', 'entryB'])
+                         ['entryA', 'entryC', 'entryB'])
         self.iostream.write_message.assert_called_with(
-            msg('R|U|someList|2|["entryA","entryC","entryB"]+').encode())
+            msg('R|U|someList|2|["entryA","entryC","entryB"]+'))
 
     def test_remove_at_index(self):
         self.record_handler._handle(
@@ -89,7 +89,7 @@ class ListTest(unittest.TestCase):
         self.list.remove_at(1)
         self.change_callback.assert_called_with(['entryA', 'entryC'])
         self.iostream.write_message.assert_called_with(
-            msg('R|U|someList|2|["entryA","entryC"]+').encode())
+            msg('R|U|someList|2|["entryA","entryC"]+'))
 
     def test_set_entire_list(self):
         self.record_handler._handle(
