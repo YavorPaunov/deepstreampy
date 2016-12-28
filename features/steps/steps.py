@@ -2,14 +2,12 @@ from __future__ import absolute_import, division, print_function, with_statement
 from __future__ import unicode_literals
 
 from deepstreampy import client
-from deepstreampy.message import message_parser
 
-from behave import *
+from behave import given, when, then
 from tornado import testing
 
 import json
 import sys
-import re
 
 if sys.version_info[0] < 3:
     import mock
@@ -78,6 +76,8 @@ def client_init(context):
     context.client._connection._on_open(dummy_future)
     context.server.add_client(context.client)
     context.subscribe_callback = mock.Mock()
+    context.presence_subscribe_callback = mock.Mock()
+    context.presence_query_callback = mock.Mock()
 
 
 @given(u'the server resets its message count')
@@ -116,10 +116,6 @@ def server_num_connections(context, num_connections):
 def server_last_message(context, message):
     expected = message.replace("|", chr(31)).replace("+", chr(30)).encode()
     actual = context.server.get_last_message()
-    #if "<UID>" in expected:
-    #    actual = re.sub(r"\x1F[a-z0-9]+\-[a-z0-9]+\x1F",
-    #                    "{0}<UID>{0}".format(chr(31)),
-    #                    actual)
     assert expected == actual, ("Got: {1}, expected: {0}".format(expected,
                                                                  actual))
 
@@ -161,7 +157,6 @@ def client_error(context, event, message):
     matching_errors = [e for e in context.client_errors if
                        e['event'] == event and
                        e['message'] == message]
-    print("ERR", context.client_errors)
     assert len(matching_errors) > 0, context.client_errors
 
 
@@ -425,7 +420,8 @@ def rpc_client_request(context, rpc_name, data):
     context.client.rpc.make(rpc_name, data, context.rpc_request_callback)
 
 
-@then(u'the client recieves a successful RPC callback for "{rpc_name}" with data "{data}"')
+@then(u'the client recieves a successful RPC callback for "{rpc_name}" with '
+      'data "{data}"')
 def rpc_callback(context, rpc_name, data):
     context.rpc_request_callback.assert_called_once_with(None, data)
 
@@ -439,3 +435,47 @@ def rpc_callback_error(context, rpc_name, error):
             found_error = True
 
     assert found_error, "Error {0} not thrown".format(error)
+
+
+@given(u'the client subscribes to presence events')
+def presence_subscribe(context):
+    context.presence_subscribe_callback.reset_mock()
+    context.client.presence.subscribe(context.presence_subscribe_callback)
+
+
+@given(u'the client queries for connected clients')
+def presence_query(context):
+    context.presence_query_callback.reset_mock()
+    context.client.presence.get_all(context.presence_query_callback)
+
+
+@then(u'the client is notified that no clients are connected')
+def presence_notify_no_clients(context):
+    context.presence_query_callback.assert_called_with([])
+
+
+@then(u'the client is notified that clients "{client_names}" are connected')
+def presence_notify_clients(context, client_names):
+    context.presence_query_callback.assert_called_with(client_names.split(','))
+
+
+@then(u'the client is notified that client "{client_name}" logged in')
+def presence_notify_log_in(context, client_name):
+    context.presence_subscribe_callback.assert_called_with(client_name, True)
+
+
+@then(u'the client is not notified that client "{client_name}" logged in')
+def presence_no_notify_log_in(context, client_name):
+    context.presence_subscribe_callback.assert_not_called()
+
+
+@then(u'the client is notified that client "{client_name}" logged out')
+def presence_notify_log_out(context, client_name):
+    context.presence_subscribe_callback.assert_called_with(client_name, False)
+
+
+@when(u'the client unsubscribes to presence events')
+@given(u'the client unsubscribes to presence events')
+def presence_unsubscribe(context):
+    context.client.presence.unsubscribe(context.presence_subscribe_callback)
+    context.presence_subscribe_callback.reset_mock()

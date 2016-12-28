@@ -4,6 +4,7 @@ from __future__ import unicode_literals
 from deepstreampy.record import RecordHandler
 from deepstreampy.event import EventHandler
 from deepstreampy.rpc import RPCHandler
+from deepstreampy.presence import PresenceHandler
 from deepstreampy.message import message_builder, message_parser
 from deepstreampy.constants import connection_state, topic, actions
 from deepstreampy.constants import event as event_constants
@@ -298,6 +299,7 @@ class Client(EventEmitter):
         """
         super(Client, self).__init__()
         self._connection = _Connection(self, url)
+        self._presence = PresenceHandler({}, self._connection, self)
         self._event = EventHandler({}, self._connection, self)
         self._rpc = RPCHandler({}, self._connection, self)
         self._record = RecordHandler({}, self._connection, self)
@@ -305,6 +307,9 @@ class Client(EventEmitter):
 
         def not_implemented_callback(topic):
             raise NotImplementedError("Topic " + topic + " not yet implemented")
+
+        self._message_callbacks[
+            topic.PRESENCE] = self._presence._handle
 
         self._message_callbacks[
             topic.EVENT] = self._event._handle
@@ -414,6 +419,10 @@ class Client(EventEmitter):
     @property
     def rpc(self):
         return self._rpc
+
+    @property
+    def presence(self):
+        return self._presence
 
     @property
     def io_loop(self):

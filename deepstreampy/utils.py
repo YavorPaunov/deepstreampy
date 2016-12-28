@@ -1,4 +1,5 @@
-from deepstreampy.constants import actions as action_constants, event as event_constants
+from deepstreampy.constants import actions as action_constants
+from deepstreampy.constants import event as event_constants
 from deepstreampy.constants import connection_state
 from functools import partial
 from pyee import EventEmitter
@@ -193,7 +194,11 @@ class AckTimeoutRegistry(EventEmitter):
             self.clear({'data': [action, name]})
 
     def clear(self, message):
-        name = message['data'][1]
+        if len(message['data']) > 1:
+            name = message['data'][1]
+        else:
+            name = ""
+
         unique_name = (message['data'][0] or "") + name
         timeout = self._register.get(unique_name, self._register.get(name))
 
@@ -202,14 +207,13 @@ class AckTimeoutRegistry(EventEmitter):
         else:
             self._client._on_error(self._topic,
                                    event_constants.UNSOLICITED_MESSAGE,
-                                   message['raw'])
+                                   message.get('raw', ''))
 
     def _on_timeout(self, unique_name, name):
         del self._register[unique_name]
         msg = "No ACK message received in time for " + name
         self._client._on_error(self._topic, event_constants.ACK_TIMEOUT, msg)
         self.emit('timeout', name)
-
 
 
 def _pad_list(l, index, value):
