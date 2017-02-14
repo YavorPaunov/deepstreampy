@@ -37,6 +37,7 @@ REJECTION = 'REJ'
 PRESENCE_JOIN = 'PNJ'
 PRESENCE_LEAVE = 'PNL'
 QUERY = 'Q'
+WRITE_ACKNOWLEDGEMENT = 'WA'
 
 
 _current_module = sys.modules[__name__]

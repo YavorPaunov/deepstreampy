@@ -58,6 +58,7 @@ class ConnectionTest(testing.AsyncTestCase):
         connect_future.get_result.return_value = self.iostream
 
         connection._on_open(connect_future)
+        self.iostream.stream.closed = mock.Mock(return_value=False)
         self.assertTrue(connection._stream is self.iostream)
         self.assertEquals(connection.state,
                           connection_state.AWAITING_CONNECTION)

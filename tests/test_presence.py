@@ -23,6 +23,7 @@ class PresenceHandlerTest(testing.AsyncTestCase):
         super(PresenceHandlerTest, self).setUp()
         self.client = client.Client(URL)
         self.iostream = mock.Mock()
+        self.iostream.stream.closed = mock.Mock(return_value=False)
         self.client._connection._state = connection_state.OPEN
         self.client._connection._stream = self.iostream
         self.connection = self.client._connection

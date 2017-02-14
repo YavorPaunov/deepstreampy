@@ -69,18 +69,19 @@ class RPCResponse(object):
 
 class RPC(object):
 
-    def __init__(self, options, callback, client):
+    def __init__(self, callback, client, **options):
         self._options = options
         self._callback = callback
         self._client = client
         self._connection = client._connection
-        # TODO: Use options.rpcAckTimeout
-        self._ack_timeout = self._connection._io_loop.call_later(
-            1, partial(self.error, event_constants.ACK_TIMEOUT))
 
-        # TODO: Use options.rpcResponseTimeout
+        self._ack_timeout = self._connection._io_loop.call_later(
+            options.get('rpcAckTimeout', 6),
+            partial(self.error, event_constants.ACK_TIMEOUT))
+
         self._response_timeout = self._connection._io_loop.call_later(
-            1, partial(self.error, event_constants.RESPONSE_TIMEOUT))
+            options.get('rpcResponseTimeout', 6),
+            partial(self.error, event_constants.RESPONSE_TIMEOUT))
 
     def ack(self):
         self._connection._io_loop.remove_timeout(self._ack_timeout)
@@ -101,7 +102,7 @@ class RPC(object):
 
 class RPCHandler(object):
 
-    def __init__(self, options, connection, client):
+    def __init__(self, connection, client, **options):
         self._options = options
         self._connection = connection
         self._client = client
@@ -144,7 +145,7 @@ class RPCHandler(object):
         uid = self._client.get_uid()
         typed_data = message_builder.typed(data)
 
-        self._rpcs[uid] = RPC(self._options, callback, self._client)
+        self._rpcs[uid] = RPC(callback, self._client, **self._options)
         self._connection.send_message(topic_constants.RPC,
                                       actions.REQUEST,
                                       [name, uid, typed_data])

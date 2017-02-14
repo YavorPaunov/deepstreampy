@@ -12,7 +12,7 @@ from pyee import EventEmitter
 
 class PresenceHandler(object):
 
-    def __init__(self, options, connection, client):
+    def __init__(self, connection, client, **options):
         self._options = options
         self._connection = connection
         self._client = client

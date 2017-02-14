@@ -9,7 +9,7 @@ from deepstreampy.message import message_builder, message_parser
 from deepstreampy.constants import connection_state, topic, actions
 from deepstreampy.constants import event as event_constants
 from deepstreampy.constants import message as message_constants
-from deepstreampy.utils import itoa
+from deepstreampy.utils import itoa, str_types
 
 from pyee import EventEmitter
 from collections import deque
@@ -21,7 +21,7 @@ import random
 
 class _Connection(object):
 
-    def __init__(self, client, url):
+    def __init__(self, client, url, **options):
         self._io_loop = ioloop.IOLoop.current()
 
         self._client = client
@@ -36,23 +36,46 @@ class _Connection(object):
 
         self._message_buffer = ""
         self._deliberate_close = False
+        self._redirecting = False
         self._too_many_auth_attempts = False
         self._queued_messages = deque()
         self._reconnect_timeout = None
         self._reconnection_attempt = 0
+
         self._current_packet_message_count = 0
         self._send_next_packet_timeout = None
+        self._last_heartbeat = None
+        self._heartbeat_interval = options.get('heartbeatInterval', 100)
+        self._heartbeat_callback = None
+
+        self._challenge_denied = False
+        self._connection_auth_timeout = False
+
         self._current_message_reset_timeout = None
         self._state = connection_state.CLOSED
 
     def connect(self, callback=None):
         self._connect_callback = callback
+
         connect_future = websocket.websocket_connect(
-            self._url,
-            self._io_loop,
-            callback=self._on_open,
-            on_message_callback=self._on_data)
+                self._url,
+                self._io_loop,
+                callback=self._on_open,
+                on_message_callback=self._on_data)
+
         return connect_future
+
+    def _check_heartbeat(self):
+        heartbeat_tolerance = self._heartbeat_interval
+        elapsed = time.time() - self._last_heartbeat
+
+        if elapsed > heartbeat_tolerance:
+            self._io_loop.remove_timeout(self._heartbeat_callback)
+            self._stream.close()
+            self._on_error("Two connections heartbeats missed successively")
+
+        self._heartbeat_callback = self._io_loop.call_later(
+            self._heartbeat_interval, self._check_heartbeat)
 
     def _on_open(self, f):
         exception = f.exception()
@@ -64,6 +87,10 @@ class _Connection(object):
 
             return
 
+        self._last_heartbeat = time.time()
+        self._heartbeat_callback = self._io_loop.call_later(
+            self._heartbeat_interval, self._check_heartbeat)
+
         self._stream = f.result()
         self._set_state(connection_state.AWAITING_CONNECTION)
 
@@ -71,12 +98,17 @@ class _Connection(object):
             self._connect_callback()
 
     def _on_error(self, error):
+        if self._heartbeat_callback:
+            self._io_loop.remove_timeout(self._heartbeat_callback)
         self._set_state(connection_state.ERROR)
 
-        if error.errno in (errno.ECONNRESET, errno.ECONNREFUSED):
+        if isinstance(error, str_types):
+            msg = error
+        elif error.errno in (errno.ECONNRESET, errno.ECONNREFUSED):
             msg = "Can't connect! Deepstream server unreachable on " + self._url
         else:
             msg = str(error)
+
         self._client._on_error(topic.CONNECTION,
                                event_constants.CONNECTION_ERROR, msg)
 
@@ -87,6 +119,8 @@ class _Connection(object):
         self._io_loop.stop()
 
     def close(self):
+        if self._heartbeat_callback:
+            self._io_loop.remove_timeout(self._heartbeat_callback)
         self._deliberate_close = True
         self._stream.close()
 
@@ -95,7 +129,9 @@ class _Connection(object):
         self._auth_callback = callback
         self._auth_future = concurrent.Future()
 
-        if self._too_many_auth_attempts:
+        if (self._too_many_auth_attempts or
+                self._challenge_denied or
+                self._connection_auth_timeout):
             msg = "this client's connection was closed"
             self._client._on_error(topic.ERROR, event_constants.IS_CLOSED, msg)
             self._auth_future.set_result(
@@ -104,7 +140,7 @@ class _Connection(object):
                      'message': msg})
 
         elif self._deliberate_close and self._state == connection_state.CLOSED:
-            self._connect()
+            self.connect()
             self._deliberate_close = False
             self._client.once(event_constants.CONNECTION_STATE_CHANGED,
                               lambda: self.authenticate(auth_params, callback))
@@ -166,6 +202,7 @@ class _Connection(object):
         action = message['action']
         data = message['data']
         if action == actions.PING:
+            self._last_heartbeat = time.time()
             ping_response = message_builder.get_message(
                 topic.CONNECTION, actions.PONG)
             self.send(ping_response)
@@ -174,11 +211,11 @@ class _Connection(object):
             if self._auth_params is not None:
                 self._send_auth_params()
         elif action == actions.CHALLENGE:
-            self._set_state(connection_state.CHALLENGING)
             challenge_response = message_builder.get_message(
                 topic.CONNECTION,
                 actions.CHALLENGE_RESPONSE,
                 [self._url])
+            self._set_state(connection_state.CHALLENGING)
             self.send(challenge_response)
         elif action == actions.REJECTION:
             self._challenge_denied = True
@@ -205,8 +242,7 @@ class _Connection(object):
     def state(self):
         """str: State of the connection.
 
-        The possible states are defined in constants.connection_state.
-        Can be one of the following:
+        The possible states are defined in constants.connection_state:
             - closed
             - awaiting_authentication
             - authenticating
@@ -225,7 +261,7 @@ class _Connection(object):
 
         All messages are passed onto and handled by tornado.
         """
-        if self._state == connection_state.OPEN:
+        if not self._stream.stream.closed():
             self._stream.write_message(raw_message.encode())
         else:
             self._queued_messages.append(raw_message.encode())
@@ -241,6 +277,7 @@ class _Connection(object):
     def _on_data(self, data):
         if data is None:
             self._on_close()
+            return
 
         full_buffer = self._message_buffer + data
         split_buffer = full_buffer.rsplit(message_constants.MESSAGE_SEPERATOR,
@@ -280,7 +317,11 @@ class _Connection(object):
         self._reconnection_attempt = 0
 
     def _on_close(self):
-        if self._deliberate_close:
+        self._io_loop.remove_timeout(self._heartbeat_callback)
+        if self._redirecting:
+            self._redirecting = False
+            self.connect()
+        elif self._deliberate_close:
             self._set_state(connection_state.CLOSED)
         else:
             self._try_reconnect()
@@ -291,18 +332,19 @@ class Client(EventEmitter):
     deepstream.io Python client based on tornado.
     """
 
-    def __init__(self, url):
+    def __init__(self, url, **options):
         """Creates the client but doesn't connect to the server.
 
         Args:
             url (str): The url to connect to
+            options
         """
         super(Client, self).__init__()
-        self._connection = _Connection(self, url)
-        self._presence = PresenceHandler({}, self._connection, self)
-        self._event = EventHandler({}, self._connection, self)
-        self._rpc = RPCHandler({}, self._connection, self)
-        self._record = RecordHandler({}, self._connection, self)
+        self._connection = _Connection(self, url, **options)
+        self._presence = PresenceHandler(self._connection, self, **options)
+        self._event = EventHandler(self._connection, self, **options)
+        self._rpc = RPCHandler(self._connection, self, **options)
+        self._record = RecordHandler(self._connection, self, **options)
         self._message_callbacks = dict()
 
         def not_implemented_callback(topic):
@@ -391,8 +433,8 @@ class Client(EventEmitter):
                 self._connection._io_loop.call_later(
                     0.1, lambda: self._on_error(event.NOT_AUTHENTICATED,
                                                 topic.ERROR,
-                                                error_msg)
-                )
+                                                error_msg))
+
         if self.listeners('error'):
             self.emit('error', msg, event, topic)
             self.emit(event, topic, msg)

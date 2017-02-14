@@ -41,6 +41,12 @@ def _parse_message(message, client):
 def convert_typed(value, client):
     value_type = value[0]
 
+    if value_type == types.TRUE:
+        return True
+
+    if value_type == types.FALSE:
+        return False
+
     if value_type == types.STRING:
         return value[1:]
 

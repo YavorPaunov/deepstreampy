@@ -22,8 +22,10 @@ class RPCHandlerTest(testing.AsyncTestCase):
 
     def setUp(self):
         super(RPCHandlerTest, self).setUp()
-        self.client = client.Client(URL)
+        options = {'rpcResponseTimeout': 0.01, 'rpcAckTimeout': 0.01}
+        self.client = client.Client(URL, **options)
         self.iostream = mock.Mock()
+        self.iostream.stream.closed = mock.Mock(return_value=False)
         self.client._connection._state = constants.connection_state.OPEN
         self.client._connection._stream = self.iostream
         self.connection = self.client._connection
@@ -164,8 +166,10 @@ class RPCResponseTest(testing.AsyncTestCase):
 
     def setUp(self):
         super(RPCResponseTest, self).setUp()
-        self.client = client.Client(URL)
+        options = {'rpcResponseTimeout': 0.01, 'rpcAckTimeout': 0.01}
+        self.client = client.Client(URL, **options)
         self.iostream = mock.Mock()
+        self.iostream.stream.closed = mock.Mock(return_value=False)
         self.client._connection._state = constants.connection_state.OPEN
         self.client._connection._stream = self.iostream
         self.connection = self.client._connection

@@ -4,9 +4,12 @@ from __future__ import unicode_literals
 from deepstreampy.constants import topic as topic_constants
 from deepstreampy.constants import actions as action_constants
 from deepstreampy.constants import event as event_constants
+from deepstreampy.constants import connection_state
 from deepstreampy.message import message_parser, message_builder
 from deepstreampy.utils import ResubscribeNotifier, SingleNotifier, Listener
 from deepstreampy.utils import Undefined, num_types, str_types
+from deepstreampy.constants import merge_strategies
+from deepstreampy import jsonpath
 
 from pyee import EventEmitter
 import re
@@ -39,7 +42,8 @@ class Record(EventEmitter, object):
         self._old_value = None
         self._old_path_values = None
         self._queued_method_calls = list()
-        self.merge_strategy = None
+        self._write_callbacks = {}
+        self.merge_strategy = merge_strategies.remote_wins
 
         self._emitter = EventEmitter()
 
@@ -61,14 +65,11 @@ class Record(EventEmitter, object):
         self._send_read()
 
     def get(self, path=None):
-        if path:
-            value = self._get_path(path).get_value()
-        else:
-            value = self._data
+        # TODO: Use self._options['recordDeepCopy']
+        return jsonpath.get(self._data, path, False)
 
-        return deepcopy(value)
 
-    def set(self, data, path=None):
+    def set(self, data, path=None, callback=None):
         if path is None and not isinstance(data, (dict, list)):
             raise ValueError(
                 "Invalid record data {0}: Record data must be a dict or list.")
@@ -80,32 +81,26 @@ class Record(EventEmitter, object):
             self._queued_method_calls.append(partial(self.set, data, path))
             return
 
-        if path is not None and self._get_path(path).get_value() == data:
+        #self._begin_change()
+        #self.version += 1
+        old_value = self._data
+        # TODO: Use self._options['recordDeepCopy']
+        new_value = jsonpath.set(old_value, path, data, True)
+
+        if new_value == old_value:
             return
+        config = {}
+        if callback:
+            config['writeSuccess'] = True
+            self._set_up_callback(self.version, callback)
+            state = self._client.connection_state
+            if state in (connection_state.CLOSED,
+                         connection_state.RECONNECTING):
+                callback('Connection error: error updating record as '
+                         'connection was closed')
 
-        if path is None and self._data == data:
-            return
-        self._begin_change()
-        self.version += 1
-        if path is not None:
-            if data is Undefined:
-                self._get_path(path).set_value(data)
-            else:
-                self._get_path(path).set_value(deepcopy(data))
-
-            typed_data = message_builder.typed(data)
-            message_data = [self.name, self.version, path, typed_data]
-
-            self._connection.send_message(topic_constants.RECORD,
-                                          action_constants.PATCH,
-                                          message_data)
-        else:
-            self._data = deepcopy(data)
-            message_data = [self.name, self.version, self._data]
-            self._connection.send_message(topic_constants.RECORD,
-                                          action_constants.UPDATE,
-                                          message_data)
-        self._complete_change()
+        self._send_update(path, data, config)
+        self._apply_change(new_value)
 
     def subscribe(self, callback, path=None, trigger_now=False):
         if self._check_destroyed('subscribe'):
@@ -164,43 +159,80 @@ class Record(EventEmitter, object):
         else:
             self.once('ready', partial(callback, self))
 
+    def _set_up_callback(self, current_version, callback):
+        new_version = (current_version or 0) + 1
+        self._write_callbacks[new_version] = callback
+
     def _on_message(self, message):
-        if message['action'] == action_constants.READ:
+        action = message['action']
+        if action == action_constants.READ:
             if self.version is None:
                 self._client.io_loop.remove_timeout(self._read_timeout)
                 self._on_read(message)
             else:
                 self._apply_update(message)
 
-        elif message['action'] == action_constants.ACK:
+        elif action == action_constants.ACK:
             self._process_ack_message(message)
 
-        elif (message['action'] == action_constants.UPDATE or
-                message['action'] == action_constants.PATCH):
+        elif action in (action_constants.UPDATE, action_constants.PATCH):
             self._apply_update(message)
 
+        elif action == action_constants.WRITE_ACKNOWLEDGEMENT:
+            versions = json.loads(message['data'][1])
+            for version in versions:
+                if version in self._write_callbacks:
+                    callback = self._write_callbacks[version]
+                    callback(message_parser.convert_typed(message['data'][2],
+                                                          self._client))
+                    del self._write_callbacks[version]
+
         elif message['data'][0] == event_constants.VERSION_EXISTS:
-            # self._recover_record
             self._recover_record(message['data'][2],
                                  json.loads(message['data'][3]),
                                  message)
 
+        elif action == event_constants.MESSAGE_DENIED:
+            self._clear_timeouts()
+
+        elif action == action_constants.SUBSCRIPTION_HAS_PROVIDER:
+            has_provider = message_parser.convert_typed(message['data'][1],
+                                                        self._client)
+            self.has_provider = has_provider
+            self.emit('hasProviderChanged', has_provider)
+
     def _recover_record(self, remote_version, remote_data, message):
         if self.merge_strategy:
-            self.merge_strategy(self, remote_data, remote_version,
-                                partial(
-                                    self._on_record_recovered, remote_version))
+            self.merge_strategy(
+                self, remote_data, remote_version,
+                partial(self._on_record_recovered,
+                        remote_version,
+                        remote_data,
+                        message))
         else:
-            message['processed_error'] = True
             self.emit('error',
                       event_constants.VERSION_EXISTS,
                       'received update for {0} but version is {1}'.format(
                           remote_version, self.version))
 
-    def _on_record_recovered(self, remote_version, error, data):
+    def _on_record_recovered(
+            self, remote_version, remote_data, message, error, data):
         if not error:
-            self.version = remote_version
-            self.set(data)
+            old_version = self.version
+
+            old_value = deepcopy(self._data)
+            new_value = jsonpath.set(old_value, None, data, False)
+            if old_value == new_value:
+                return
+
+            config = message['data'][4] if len(message['data']) >= 5 else None
+            if config and json.loads(config)['writeSuccess']:
+                callback = self._write_callbacks[old_version]
+                del self._write_callbacks[old_version]
+                self._set_up_callback(self.version, callback)
+
+            self._send_update(None, data, config)
+            self._apply_change(new_value)
         else:
             self.emit('error', event_constants.VERSION_EXISTS,
                       'received update for {0} but version is {1}'.format(
@@ -243,13 +275,52 @@ class Record(EventEmitter, object):
 
         self._begin_change()
         self.version = version
-
         if message['action'] == action_constants.PATCH:
             self._get_path(message['data'][2]).set_value(data)
         else:
             self._data = data
 
         self._complete_change()
+
+    def _send_update(self, path, data, config):
+        self.version += 1
+        if not path:
+            if config:
+                msg_data = [self.name, self.version, data, config]
+            else:
+                msg_data = [self.name, self.version, data]
+            self._connection.send_message(topic_constants.RECORD,
+                                          action_constants.UPDATE,
+                                          msg_data)
+        else:
+            if config:
+                msg_data = [self.name, self.version, path,
+                            message_builder.typed(data), config]
+            else:
+                msg_data = [self.name, self.version, path,
+                            message_builder.typed(data)]
+            self._connection.send_message(topic_constants.RECORD,
+                                          action_constants.PATCH,
+                                          msg_data)
+
+    def _apply_change(self, new_data):
+        if self.is_destroyed:
+            return
+
+        old_data = self._data
+        self._data = new_data
+
+        if not self._emitter._events:
+            return
+
+        paths = self._emitter._events.keys()
+        for path in paths:
+            new_value = jsonpath.get(new_data, path, False)
+            old_value = jsonpath.get(old_data, path, False)
+
+            if new_value != old_value:
+                self._emitter.emit(path, self.get(path))
+
 
     def _on_read(self, message):
         self._begin_change()
@@ -292,7 +363,8 @@ class Record(EventEmitter, object):
         self._old_path_values = dict()
 
         if self._emitter.listeners(ALL_EVENT):
-            self._old_value = self.get()
+            self._old_value = deepcopy(self.get())
+
         for path in paths:
             if path != ALL_EVENT:
                 self._old_path_values[path] = self._get_path(path).get_value()
@@ -549,7 +621,7 @@ class List(EventEmitter, object):
 
 class RecordHandler(EventEmitter, object):
 
-    def __init__(self, options, connection, client):
+    def __init__(self, connection, client, **options):
         super(RecordHandler, self).__init__()
         self._options = options
         self._connection = connection
@@ -632,7 +704,7 @@ class RecordHandler(EventEmitter, object):
                                    pattern)
 
     def snapshot(self, name, callback):
-        if name in self._records:
+        if name in self._records and self._records[name].is_ready:
             callback(None, self._records[name].get())
         else:
             self._snapshot_registry.request(name, callback)
@@ -657,8 +729,8 @@ class RecordHandler(EventEmitter, object):
 
         if action in (action_constants.ACK, action_constants.ERROR):
             name = message['data'][1]
-            if (message['data'][0] == action_constants.DELETE or
-                message['data'][0] == action_constants.UNSUBSCRIBE):
+            if data[0] in (action_constants.DELETE,
+                           action_constants.UNSUBSCRIBE):
                 self._destroy_emitter.emit('destroy_ack_' + name, message)
 
                 if (message['data'][0] == action_constants.DELETE and
@@ -667,10 +739,10 @@ class RecordHandler(EventEmitter, object):
 
                 return
 
-            if (data[0] == action_constants.SNAPSHOT or
-                    data[0] == action_constants.HAS):
+            if data[0] in (action_constants.SNAPSHOT, action_constants.HAS):
                 message['processedError'] = True
-                self._snapshot_registry.receive(name, message['data'][2])
+                error = message['data'][2]
+                self._snapshot_registry.receive(name, error , None)
                 return
         else:
             name = message['data'][0]
@@ -689,16 +761,14 @@ class RecordHandler(EventEmitter, object):
                                             json.loads(data[2]))
 
         if (action == action_constants.HAS and
-                self._snapshot_registry.has_request(name)):
+                self._has_registry.has_request(name)):
             processed = True
-            self._snapshot_registry.receive(name,
-                                            None,
-                                            json.loads(data[1]))
+            record_exists = message_parser.convert_typed(data[1], self._client)
+            self._has_registry.receive(name, None, record_exists)
         listener = self._listeners.get(name, None)
         if (action == action_constants.ACK and
             data[0] == action_constants.UNLISTEN and
-            listener and
-            listener.destroy_pending):
+                listener and listener.destroy_pending):
                 processed = True
                 listener.destroy()
                 del self._listeners[name]

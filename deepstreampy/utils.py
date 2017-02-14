@@ -32,15 +32,15 @@ class SingleNotifier(object):
             self._requests[name] = []
             self._connection.send_message(self._topic, self._action, [name])
 
-        response_timeout = self._connection.io_loop.call_later(
+        response_timeout = self._client.io_loop.call_later(
             self._timeout_duration, partial(self._on_response_timeout, name))
         self._requests[name].append({'timeout': response_timeout,
-                                     callback: callback})
+                                     'callback': callback})
 
     def receive(self, name, error, data):
         entries = self._requests[name]
         for entry in entries:
-            self._connection._ioloop.remove_timeout(entry['timeout'])
+            self._client.io_loop.remove_timeout(entry['timeout'])
             entry['callback'](error, data)
         del self._requests[name]
 
