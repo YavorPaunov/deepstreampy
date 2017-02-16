@@ -68,7 +68,6 @@ class Record(EventEmitter, object):
         # TODO: Use self._options['recordDeepCopy']
         return jsonpath.get(self._data, path, False)
 
-
     def set(self, data, path=None, callback=None):
         if path is None and not isinstance(data, (dict, list)):
             raise ValueError(
@@ -81,14 +80,13 @@ class Record(EventEmitter, object):
             self._queued_method_calls.append(partial(self.set, data, path))
             return
 
-        #self._begin_change()
-        #self.version += 1
         old_value = self._data
         # TODO: Use self._options['recordDeepCopy']
         new_value = jsonpath.set(old_value, path, data, True)
 
         if new_value == old_value:
             return
+
         config = {}
         if callback:
             config['writeSuccess'] = True
@@ -204,11 +202,11 @@ class Record(EventEmitter, object):
     def _recover_record(self, remote_version, remote_data, message):
         if self.merge_strategy:
             self.merge_strategy(
-                self, remote_data, remote_version,
-                partial(self._on_record_recovered,
-                        remote_version,
-                        remote_data,
-                        message))
+                self, remote_data, remote_version, partial(
+                    self._on_record_recovered,
+                    remote_version,
+                    remote_data,
+                    message))
         else:
             self.emit('error',
                       event_constants.VERSION_EXISTS,
@@ -219,6 +217,7 @@ class Record(EventEmitter, object):
             self, remote_version, remote_data, message, error, data):
         if not error:
             old_version = self.version
+            self.version = remote_version
 
             old_value = deepcopy(self._data)
             new_value = jsonpath.set(old_value, None, data, False)
@@ -254,7 +253,6 @@ class Record(EventEmitter, object):
 
     def _apply_update(self, message):
         version = int(message['data'][1])
-
         if message['action'] == action_constants.PATCH:
             data = message_parser.convert_typed(
                 message['data'][3], self._client)
@@ -315,12 +313,18 @@ class Record(EventEmitter, object):
 
         paths = self._emitter._events.keys()
         for path in paths:
+            if path == 'new_listener':
+                continue
+
+            if path == 'ALL_EVENT' and new_data != old_data:
+                self._emitter.emit(ALL_EVENT, new_data)
+                continue
+
             new_value = jsonpath.get(new_data, path, False)
             old_value = jsonpath.get(old_data, path, False)
 
             if new_value != old_value:
                 self._emitter.emit(path, self.get(path))
-
 
     def _on_read(self, message):
         self._begin_change()
@@ -484,7 +488,7 @@ class List(EventEmitter, object):
         if not self._record.is_ready:
             self._queued_methods.append(partial(self.remove_entry, entry))
 
-        current_entries = self._record.get()
+        current_entries = deepcopy(self._record.get())
         current_entries.remove(entry)
 
         self.set_entries(current_entries)
@@ -493,7 +497,7 @@ class List(EventEmitter, object):
         if not self._record.is_ready:
             self._queued_methods.append(partial(self.remove_entry_at, index))
 
-        current_entries = self._record.get()
+        current_entries = deepcopy(self._record.get())
         del current_entries[index]
         self.set_entries(current_entries)
 
@@ -501,7 +505,7 @@ class List(EventEmitter, object):
         if not self._record.is_ready:
             self._queued_methods.append(partial(self.add_entry, entry, index))
 
-        entries = self.get_entries()
+        entries = deepcopy(self.get_entries())
         if index is not None:
             entries.insert(index, entry)
         else:
@@ -742,7 +746,7 @@ class RecordHandler(EventEmitter, object):
             if data[0] in (action_constants.SNAPSHOT, action_constants.HAS):
                 message['processedError'] = True
                 error = message['data'][2]
-                self._snapshot_registry.receive(name, error , None)
+                self._snapshot_registry.receive(name, error, None)
                 return
         else:
             name = message['data'][0]

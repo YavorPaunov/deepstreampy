@@ -20,11 +20,11 @@ class TestRecordRead(unittest.TestCase):
     def setUp(self):
         self.client = client.Client(URL)
         self.iostream = mock.Mock()
+        self.iostream.stream.closed = mock.Mock(return_value=False)
         self.client._connection._state = connection_state.OPEN
         self.client._connection._stream = self.iostream
         self.client._io_loop = mock.Mock()
-        self.record_handler = RecordHandler({},
-                                            self.client._connection,
+        self.record_handler = RecordHandler(self.client._connection,
                                             self.client)
         self.on_discard = mock.Mock()
         self.record_A = self.record_handler.get_record('record_A')
@@ -90,11 +90,11 @@ class TestRecordDeleted(unittest.TestCase):
     def setUp(self):
         self.client = client.Client(URL)
         self.iostream = mock.Mock()
+        self.iostream.stream.closed = mock.Mock(return_value=False)
         self.client._connection._state = connection_state.OPEN
         self.client._connection._stream = self.iostream
         self.client._io_loop = mock.Mock()
-        self.record_handler = RecordHandler({},
-                                            self.client._connection,
+        self.record_handler = RecordHandler(self.client._connection,
                                             self.client)
         self.on_delete = mock.Mock()
         self.record_A = self.record_handler.get_record('record_A')

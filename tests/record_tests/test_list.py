@@ -21,10 +21,11 @@ class ListTest(unittest.TestCase):
     def setUp(self):
         self.client = client.Client(URL)
         self.iostream = mock.Mock()
+        self.iostream.stream.closed = mock.Mock(return_value=False)
         self.client._connection._state = connection_state.OPEN
         self.client._connection._stream = self.iostream
         self.record_handler = RecordHandler(
-            {}, self.client._connection, self.client)
+            self.client._connection, self.client)
         self.list = List(self.record_handler, 'someList', {})
         self.change_callback = mock.Mock()
         self.ready_callback = mock.Mock()

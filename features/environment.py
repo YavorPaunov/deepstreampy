@@ -55,37 +55,45 @@ def _received_messages(request_path):
     return DeepstreamHandler.received_messages[request_path]
 
 
+def _num_connection(request_path):
+    return len(_connections(request_path))
+
+
+def _create_server(port, path):
+    application = web.Application([
+        (path, DeepstreamHandler),
+    ])
+    server = httpserver.HTTPServer(application)
+    server.listen(port)
+    return server
+
+
 def after_step(context, step):
-    context.io_loop.call_later(0.05, context.io_loop.stop)
+    context.io_loop.call_later(0.025, context.io_loop.stop)
     context.io_loop.start()
 
 
 def before_scenario(context, scenario):
-    for conn in DeepstreamHandler.connections['/deepstream']:
-        conn.close()
-    for conn in DeepstreamHandler.connections['/deepstream2']:
-        conn.close()
+    if ioloop.IOLoop.initialized():
+        context.io_loop = ioloop.IOLoop.current()
+    else:
+        context.io_loop = ioloop.IOLoop(make_current=True)
+
+    context.server = None
+    context.other_server = None
     DeepstreamHandler.connections.clear()
     DeepstreamHandler.received_messages.clear()
     DeepstreamHandler.sent_messages.clear()
     DeepstreamHandler.callbacks.clear()
-    application = web.Application([
-        ('/deepstream', DeepstreamHandler),
-        ('/deepstream2', DeepstreamHandler)
-    ])
 
-    context.server = httpserver.HTTPServer(application)
-    context.server.listen(7777)
-
-    context.num_connections = (lambda request_path:
-                               len(_connections(request_path)))
+    context.create_server = _create_server
+    context.num_connections = _num_connection
     context.connections = _connections
     context.sent_messages = _sent_messages
     context.received_messages = _received_messages
 
     context.client = None
     context.client_errors = []
-    context.io_loop = ioloop.IOLoop.current()
     context.event_callbacks = {}
     context.has_callbacks = {}
     context.snapshot_callbacks = {}
@@ -102,9 +110,5 @@ def before_scenario(context, scenario):
 
 
 def after_scenario(context, scenario):
-    if context.client:
-        context.client.close()
-    context.server.stop()
-
-    del context.server
-    del context.client
+    context.io_loop.clear_current()
+    context.io_loop.close(all_fds=True)

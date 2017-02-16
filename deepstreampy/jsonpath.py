@@ -11,7 +11,6 @@ SPLIT_REG_EXP = r"[\.\[\]]"
 def get(data, path, deep_copy):
     node = data
     tokens = _tokenize(path)
-
     for token in tokens:
         try:
             node = node[token]
@@ -51,11 +50,10 @@ def set(data, path, value, deep_copy):
                 node[token] = {}
 
             node = node[token]
-
     last_token = tokens[-1]
     if value is Undefined:
         del node[last_token]
-        return
+        return data
 
     if isinstance(node, list):
         _pad_list(node, len(node) + 1, None)

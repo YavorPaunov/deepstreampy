@@ -25,9 +25,9 @@ class TestMergeConflict(unittest.TestCase):
         }
         self.client = client.Client(URL)
         self.iostream = mock.Mock()
+        self.iostream.stream.closed = mock.Mock(return_value=False)
         self.client._connection._state = connection_state.OPEN
         self.client._connection._stream = self.iostream
-        self.client._io_loop = mock.Mock()
         self.record = Record('someRecord', {}, self.client._connection, options,
                              self.client)
 
@@ -35,22 +35,18 @@ class TestMergeConflict(unittest.TestCase):
         self.subscribe_callback = mock.Mock()
 
         self.record.on('error', self.error_callback)
-        self.record.subscribe(self.subscribe_callback)
-
-        message = {}
-        message['topic'] = 'R'
-        message['action'] = 'R'
-        message['data'] = ['TEST', 0, '{}']
-        self.record._on_message(message)
 
     def test_out_of_sync(self):
         message = {}
         message['topic'] = 'R'
         message['action'] = 'U'
         message['data'] = ['TEST', 0, '{}']
-
         self.record._on_message(message)
 
+        self.record.subscribe(self.subscribe_callback)
+        message = {}
+        message['topic'] = 'R'
+        message['action'] = 'U'
         message['data'] = ['TEST', 5, '{"reason":"skippedVersion"}']
         self.record._on_message(message)
 

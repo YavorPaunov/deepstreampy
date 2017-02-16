@@ -17,17 +17,19 @@ else:
     from unittest import mock
 
 FIRST_SERVER_URL = "ws://localhost:7777/deepstream"
-SECOND_SERVER_URL = "ws://localhost:7777/deepstream2"
+SECOND_SERVER_URL = "ws://localhost:8888/deepstream2"
 
 
 @given(u'the test server is ready')
 def server_ready(context):
-    pass
+    if not context.server:
+        context.server = context.create_server(7777, '/deepstream')
 
 
 @given(u'the second test server is ready')
 def second_server_ready(context):
-    pass
+    if not context.other_server:
+        context.other_server = context.create_server(8888, '/deepstream2')
 
 
 @given(u'the client is initialised')
@@ -596,6 +598,8 @@ def record_write_acknowledge(context, record_name):
 @then(u'the client is notified that the record "{record_name}" was written '
       'without error')
 def record_write_acknowledge_success(context, record_name):
+    if context.connection.state != connection_state.OPEN:
+        yield context.client.connect()
     context.write_acknowledge.assert_called_with(None)
 
 

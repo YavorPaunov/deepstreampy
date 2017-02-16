@@ -5,6 +5,8 @@ from deepstreampy import client
 from deepstreampy.record import Record
 from deepstreampy.constants import connection_state
 from deepstreampy.utils import Undefined
+
+from tornado import testing
 import unittest
 import sys
 
@@ -16,15 +18,17 @@ else:
 URL = "ws://localhost:7777/deepstream"
 
 
-class RecordTest(unittest.TestCase):
+class RecordTest(testing.AsyncTestCase):
 
     def setUp(self):
         super(RecordTest, self).setUp()
         self.client = client.Client(URL)
         self.iostream = mock.Mock()
+        self.iostream.stream.closed = mock.Mock(return_value=False)
         self.client._connection._state = connection_state.OPEN
         self.client._connection._stream = self.iostream
         self.connection = self.client._connection
+        self.io_loop = self.connection._io_loop
         self.options = {'recordReadAckTimeout': 100, 'recordReadTimeout': 200}
         self.record = Record('testRecord',
                              {},
