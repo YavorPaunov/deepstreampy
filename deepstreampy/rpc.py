@@ -1,3 +1,5 @@
+"""Deepstream RPC handling."""
+
 from __future__ import absolute_import, division, print_function, with_statement
 from __future__ import unicode_literals
 
@@ -13,8 +15,19 @@ from functools import partial
 
 
 class RPCResponse(object):
+    """Allows a RPC provider to respond to a request.
+
+    Attributes:
+        auto_ack (bool): Specifies whether requests should be auto acknowledged
+    """
 
     def __init__(self, connection, name, correlation_id):
+        """
+        Args:
+            connection (deepstreampy.client._Connection): The current connection
+            name (str): The name of the RPC
+            correlation_id (str): Correlation ID of the RPC
+        """
         self._connection = connection
         self._name = name
         self._correletaion_id = correlation_id
@@ -25,6 +38,12 @@ class RPCResponse(object):
         self._connection._io_loop.add_callback(self._perform_auto_ack)
 
     def ack(self):
+        """Acknowledge the receiving the request.
+
+        Will happen implicitly unless the request callback sets ``auto_ack``
+        to False.
+
+        """
         if not self._is_acknowledged:
             self._connection.send_message(
                 topic_constants.RPC,
@@ -33,6 +52,17 @@ class RPCResponse(object):
             self._is_acknowledged = True
 
     def reject(self):
+        """Reject the request.
+
+        This might be necessary if the client is already processing a large
+        number of requests. If deepstream receives a rejection message it will
+        try to route the request to another provider - or return a
+        NO_RPC_PROVIDER error if there are no providers left.
+
+        If autoAck is disabled and the response is sent before the ack message
+        the request will still be completed and the ack message ignored.
+
+        """
         self.auto_ack = False
         self._is_complete = True
         self._is_acknowledged = True
@@ -42,6 +72,11 @@ class RPCResponse(object):
             [self._name, self._correletaion_id])
 
     def send(self, data):
+        """Complete the request by sending the response data to the server.
+
+        Args:
+            data: JSON serializable data to send to the server.
+        """
         if self._is_complete:
             raise ValueError('RPC {0} already completed'.format(self._name))
         self.ack()
@@ -54,6 +89,10 @@ class RPCResponse(object):
         self._is_complete = True
 
     def error(self, error_str):
+        """Notify the server that an error has occured.
+
+        This will also complete the RPC.
+        """
         self.auto_ack = False
         self._is_complete = True
         self._is_acknowledged = True
@@ -68,6 +107,10 @@ class RPCResponse(object):
 
 
 class RPC(object):
+    """Represents a single RPC made from the client to the server.
+
+    Encapsulates logic around timeouts and converts the incoming response data.
+    """
 
     def __init__(self, callback, client, **options):
         self._options = options

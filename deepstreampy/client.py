@@ -13,10 +13,30 @@ from deepstreampy.utils import itoa, str_types
 
 from pyee import EventEmitter
 from collections import deque
-from tornado import ioloop, concurrent, websocket
+from tornado import ioloop, concurrent, gen, websocket
+
 import errno
 import time
 import random
+
+
+@gen.coroutine
+def connect(url, **options):
+    """Establish a connection to a deepstream.io server.
+
+    Args:
+        url (string): URL to connect to
+        **options: The options for the client
+
+    Returns:
+        tornado.concurrent.Future: A future that resolves with an instance of
+            ``deepstreampy.client.Client`` when a connection is established. If
+            the client is unable to connect, the future will have the
+            appropriate exception set.
+    """
+    client = Client(url, **options)
+    yield client.connect()
+    raise gen.Return(client)
 
 
 class _Connection(object):
@@ -29,7 +49,6 @@ class _Connection(object):
         self._stream = None
 
         self._auth_params = None
-        self._auth_callback = None
         self._auth_future = None
         self._connect_callback = None
         self._connect_error = None
@@ -124,9 +143,8 @@ class _Connection(object):
         self._deliberate_close = True
         self._stream.close()
 
-    def authenticate(self, auth_params, callback):
+    def authenticate(self, auth_params):
         self._auth_params = auth_params
-        self._auth_callback = callback
         self._auth_future = concurrent.Future()
 
         if (self._too_many_auth_attempts or
@@ -143,7 +161,7 @@ class _Connection(object):
             self.connect()
             self._deliberate_close = False
             self._client.once(event_constants.CONNECTION_STATE_CHANGED,
-                              lambda: self.authenticate(auth_params, callback))
+                              lambda: self.authenticate(auth_params))
 
         if self._state == connection_state.AWAITING_AUTHENTICATION:
             self._send_auth_params()
@@ -172,10 +190,6 @@ class _Connection(object):
             auth_data = (self._get_auth_data(message_data[1]) if
                          data_size > 1 else None)
 
-            if self._auth_callback:
-                self._auth_callback(False,
-                                    message_data[0] if data_size else None,
-                                    auth_data)
             if self._auth_future:
                 self._auth_future.set_result(
                     {'success': False,
@@ -188,13 +202,10 @@ class _Connection(object):
             auth_data = (self._get_auth_data(message_data[0]) if
                          data_size else None)
 
-            # Resolve auth future and callback
+            # Resolve auth future
             if self._auth_future:
                 self._auth_future.set_result(
                     {'success': True, 'error': None, 'message': auth_data})
-
-            if self._auth_callback:
-                self._auth_callback(True, None, auth_data)
 
             self._send_queued_messages()
 
@@ -365,11 +376,16 @@ class Client(EventEmitter):
         self._message_callbacks[topic.ERROR] = self._on_error
 
     def connect(self, callback=None):
-        """Establishes connection to the host and port given to the constructor.
+        """Establishes a connection to the url given to the constructor.
 
         Args:
             callback (callable): Will be called when connection is established
                 without any arguments
+
+        Returns:
+            tornado.concurrent.Future: A future that resolves when the
+                connection is established, or raises an exception if the client
+                is unable to connect
         """
         return self._connection.connect(callback)
 
@@ -382,26 +398,21 @@ class Client(EventEmitter):
     def close(self):
         self._connection.close()
 
-    def login(self, auth_params, callback=None):
+    def login(self, auth_params):
         """Sends authentication parameters to the server.
 
         If the connection is not yet established the authentication parameter
         will be stored and send once it becomes available
         Can be called multiple times until either the connection is
-        authenticated.
-
-        Note: A max auth attempts option is currently not implemented but will
-            be in the near future.
+        authenticated or the max auth attempts is reached.
 
         Args:
             auth_params: JSON serializable data structure, it's up to the
-                permission handler on the server to make sense of them, although
-                something like { username: 'someName', password: 'somePass' }
-                will probably make the most sense.
+                permission handler on the server to make sense of them.
             callback (callable): Will be called with True in case of success, or
                 False, error_type, error_message in case of failure
         """
-        return self._connection.authenticate(auth_params, callback)
+        return self._connection.authenticate(auth_params)
 
     def get_uid(self):
         timestamp = itoa(int(time.time() * 1000), 36)

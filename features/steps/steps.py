@@ -1,7 +1,7 @@
 from __future__ import absolute_import, division, print_function, with_statement
 from __future__ import unicode_literals
 
-from deepstreampy import client
+from deepstreampy import connect
 from deepstreampy.constants import connection_state
 from deepstreampy.message import message_parser
 
@@ -35,7 +35,7 @@ def second_server_ready(context):
 @given(u'the client is initialised')
 @testing.gen_test
 def client_init(context):
-    context.client = client.Client(FIRST_SERVER_URL, rpcResponseTimeout=0.2)
+    context.client = yield connect(FIRST_SERVER_URL, rpcResponseTimeout=0.2)
     context.client.get_uid = mock.Mock(return_value='<UID>')
 
     def error_callback(message, event, t):
@@ -45,13 +45,12 @@ def client_init(context):
 
     context.subscribe_callback = mock.Mock()
     context.client.on('error', error_callback)
-    yield context.client.connect()
 
 
 @given(u'the client is initialised with a small heartbeat interval')
 @testing.gen_test
 def client_init_small_heartbeat(context):
-    context.client = client.Client(FIRST_SERVER_URL, heartbeatInterval=0.5)
+    context.client = yield connect(FIRST_SERVER_URL, rpcResponseTimeout=0.2)
     context.client.get_uid = mock.Mock(return_value='<UID>')
 
     def error_callback(message, event, t):
@@ -61,7 +60,6 @@ def client_init_small_heartbeat(context):
 
     context.subscribe_callback = mock.Mock()
     context.client.on('error', error_callback)
-    yield context.client.connect()
 
 
 @given(u'the server resets its message count')

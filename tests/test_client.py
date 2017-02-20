@@ -30,7 +30,6 @@ class ConnectionTest(testing.AsyncTestCase):
         super(ConnectionTest, self).setUp()
         self.client = mock.Mock()
         self.iostream = mock.Mock()
-        self.auth_callback = mock.Mock()
 
     def _get_connection_state_changes(self):
         count = 0
@@ -68,19 +67,17 @@ class ConnectionTest(testing.AsyncTestCase):
                           connection_state.AWAITING_AUTHENTICATION)
         self.iostream.write_message.assert_not_called()
 
-        connection.authenticate({'user': 'Anon'}, self.auth_callback)
+        connection.authenticate({'user': 'Anon'})
         self.assertEquals(connection.state,
                           connection_state.AUTHENTICATING)
         self.assertEquals(self._get_last_sent_message(),
                           "A{0}REQ{0}{{\"user\":\"Anon\"}}{1}".format(
                               chr(31), chr(30)).encode())
         self.assertEquals(self._get_connection_state_changes(), 3)
-        self.auth_callback.assert_not_called()
 
         connection._on_data('A{0}A{1}'.format(chr(31), chr(30)))
         self.assertEquals(connection.state,
                           connection_state.OPEN)
-        self.auth_callback.assert_called_once_with(True, None, None)
         self.assertEquals(self._get_connection_state_changes(), 4)
 
         connection.send_message('R', 'S', ['test1'])

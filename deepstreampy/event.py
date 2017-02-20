@@ -1,3 +1,5 @@
+"""Deepstream event handling."""
+
 from __future__ import absolute_import, division, print_function, with_statement
 from __future__ import unicode_literals
 
@@ -14,6 +16,8 @@ from pyee import EventEmitter
 
 
 class EventHandler(object):
+    """Handles incoming and outgoing messages related to deepstream events.
+    """
 
     def __init__(self, connection, client, **options):
         self._options = options
@@ -29,6 +33,16 @@ class EventHandler(object):
                                                          self._resubscribe)
 
     def subscribe(self, name, callback):
+        """Subscribe to an event.
+
+        Adds a callback for both locally emited events as well as events emitted
+        by other clients.
+
+        Args:
+            name (str): The name of the event.
+            callback (callable): The function to call when an event is received.
+
+        """
         if not self._emitter.listeners(name):
             self._ack_timeout_registry.add(name, actions.SUBSCRIBE)
             self._connection.send_message(topic_constants.EVENT,
@@ -38,6 +52,16 @@ class EventHandler(object):
         self._emitter.on(name, callback)
 
     def unsubscribe(self, name, callback):
+        """Unsubscribe from an event.
+
+        Removes the callback for the specified event, and notifies the server
+        of the change.
+
+        Args:
+            name (str): The name of the event
+            callback (callable): The callback to remove
+
+        """
         self._emitter.remove_listener(name, callback)
 
         if not self._emitter.listeners(name):
@@ -47,12 +71,34 @@ class EventHandler(object):
                                           [name])
 
     def emit(self, name, data):
+        """Emit an event locally, and tell the server to broadcast it.
+
+        Other connected clients will also receive the event.
+
+        Args:
+            name (str): The name of the event.
+            data: JSON serializable data to send along with the event.
+
+        """
         self._connection.send_message(topic_constants.EVENT,
                                       actions.EVENT,
                                       [name, message_builder.typed(data)])
         self._emitter.emit(name, data)
 
     def listen(self, pattern, callback):
+        """Register as listener for event subscriptions from other clients.
+
+        Args:
+            pattern (str): Regular expression pattern to match subscriptions to
+            callback (callable): A function that will be called when an event
+                has been initially subscribed to or is no longer subscribed.
+
+                Expects the following arguments:
+                    event_name (str)
+                    is_subscribed (bool)
+                    response (callable, callable)
+
+        """
         if (pattern in self._listener and
                 not self._listener[pattern].destroy_pending):
             return self._client._on_error(topic_constants.EVENT,
@@ -69,6 +115,14 @@ class EventHandler(object):
                                            self._connection)
 
     def unlisten(self, pattern):
+        """Stop listening to the specified pattern.
+
+        Remove a previously registered listening pattern. The client will no
+        longer be listening for active/inactive subscriptions.
+
+        Args:
+            pattern: The regular expression pattern to remove
+        """
         if pattern not in self._listener:
             self._client._on_error(topic_constants.ERROR,
                                    event_constants.NOT_LISTENING,
