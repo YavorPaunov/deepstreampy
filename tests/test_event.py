@@ -22,22 +22,22 @@ class EventsTest(unittest.TestCase):
         super(EventsTest, self).setUp()
 
         self.client = client.Client(URL)
-        self.iostream = mock.Mock()
-        self.iostream.stream.closed = mock.Mock(return_value=False)
+        self.handler = mock.Mock()
+        self.handler.stream.closed = mock.Mock(return_value=False)
         self.client._connection._state = connection_state.OPEN
-        self.client._connection._stream = self.iostream
+        self.client._connection._websocket_handler = self.handler
         self.connection = self.client._connection
 
         self.event_callback = mock.Mock()
         self.error_callback = mock.Mock()
 
     def test_handler(self):
-        self.iostream.write_message.assert_not_called()
+        self.handler.write_message.assert_not_called()
         self.client.event.emit('myEvent', 6)
-        self.iostream.write_message.assert_called_with(msg('E|EVT|myEvent|N6+'))
+        self.handler.write_message.assert_called_with(msg('E|EVT|myEvent|N6+'))
 
         self.client.event.subscribe('myEvent', self.event_callback)
-        self.iostream.write_message.assert_called_with(msg('E|S|myEvent+'))
+        self.handler.write_message.assert_called_with(msg('E|S|myEvent+'))
 
         self.client.on('error', self.error_callback)
         # self.error_callback.assert_called_with(
@@ -80,7 +80,7 @@ class EventsTest(unittest.TestCase):
                                    'action': 'SP',
                                    'data': ['a/.*', 'a/1']})
 
-        self.iostream.write_message.assert_called_with(msg('E|LA|a/.*|a/1+'))
+        self.handler.write_message.assert_called_with(msg('E|LA|a/.*|a/1+'))
 
     def test_reject(self):
         def listen_callback(data, is_subscribed, response):
@@ -91,7 +91,7 @@ class EventsTest(unittest.TestCase):
                                    'action': 'SP',
                                    'data': ['b/.*', 'b/1']})
 
-        self.iostream.write_message.assert_called_with(msg('E|LR|b/.*|b/1+'))
+        self.handler.write_message.assert_called_with(msg('E|LR|b/.*|b/1+'))
 
     def test_accept_and_discard(self):
         def listen_callback(data, is_subscribed, response=None):
@@ -107,7 +107,7 @@ class EventsTest(unittest.TestCase):
                                    'action': 'SP',
                                    'data': ['b/.*', 'b/2']})
 
-        self.iostream.write_message.assert_called_with(msg('E|LA|b/.*|b/2+'))
+        self.handler.write_message.assert_called_with(msg('E|LA|b/.*|b/2+'))
 
     def test_accept_unlisten(self):
 
@@ -119,12 +119,12 @@ class EventsTest(unittest.TestCase):
                                    'action': 'SP',
                                    'data': ['a/.*', 'a/1']})
 
-        self.iostream.write_message.assert_called_with(msg('E|LA|a/.*|a/1+'))
+        self.handler.write_message.assert_called_with(msg('E|LA|a/.*|a/1+'))
 
         self.client.event.unlisten('a/.*')
-        self.iostream.write_message.assert_called_with(msg('E|UL|a/.*+'))
+        self.handler.write_message.assert_called_with(msg('E|UL|a/.*+'))
 
-        self.iostream.reset_mock()
+        self.handler.reset_mock()
         self.client.event._handle({'topic': 'E',
                                    'action': 'A',
                                    'data': ['UL', 'a/.*']})
@@ -135,7 +135,7 @@ class EventsTest(unittest.TestCase):
         self.error_callback.assert_called_with('a/.*',
                                                'UNSOLICITED_MESSAGE',
                                                'E')
-        self.iostream.write_message.assert_not_called()
+        self.handler.write_message.assert_not_called()
 
         self.client.event.unlisten('a/.*')
         self.error_callback.assert_called_with('a/.*',

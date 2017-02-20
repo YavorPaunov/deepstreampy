@@ -5,12 +5,11 @@ respective callbacks are made, and events triggered.
 from __future__ import absolute_import, division, print_function, with_statement
 from __future__ import unicode_literals
 
-from deepstreampy.message import message_builder, message_parser
-from deepstreampy.constants import actions, connection_state
-from deepstreampy.constants import topic as topic_constants
-from deepstreampy.constants import event as event_constants
-from deepstreampy import client
+from deepstreampy.message import connection
+from deepstreampy import constants
+
 from tornado import testing
+
 import sys
 import errno
 
@@ -29,89 +28,90 @@ class ConnectionTest(testing.AsyncTestCase):
     def setUp(self):
         super(ConnectionTest, self).setUp()
         self.client = mock.Mock()
-        self.iostream = mock.Mock()
+        self.handler = mock.Mock()
 
     def _get_connection_state_changes(self):
         count = 0
         for call_args in self.client.emit.call_args_list:
-            if call_args[0][0] == event_constants.CONNECTION_STATE_CHANGED:
+            if call_args[0][0] == constants.event.CONNECTION_STATE_CHANGED:
                 count += 1
         return count
 
     def _get_sent_messages(self):
-        for call_args in self.iostream.write_message.call_args_list:
+        for call_args in self.handler.write_message.call_args_list:
             yield call_args[0]
 
     def _get_last_sent_message(self):
-        return self.iostream.write_message.call_args[0][0]
+        return self.handler.write_message.call_args[0][0]
 
     def test_connects(self):
-        connection = client._Connection(self.client, URL)
-        assert connection.state == connection_state.CLOSED
+        conn = connection.Connection(self.client, URL)
+        assert conn.state == constants.connection_state.CLOSED
         self.assertEquals(self._get_connection_state_changes(), 0)
         connect_future = mock.Mock()
         connect_future_config = {'exception.return_value': None,
-                                 'result.return_value': self.iostream}
+                                 'result.return_value': self.handler}
         connect_future.configure_mock(**connect_future_config)
         connect_future.exception.return_value = None
-        connect_future.get_result.return_value = self.iostream
+        connect_future.get_result.return_value = self.handler
 
-        connection._on_open(connect_future)
-        self.iostream.stream.closed = mock.Mock(return_value=False)
-        self.assertTrue(connection._stream is self.iostream)
-        self.assertEquals(connection.state,
-                          connection_state.AWAITING_CONNECTION)
+        conn._on_open(connect_future)
+        self.handler.stream.closed = mock.Mock(return_value=False)
+        self.assertTrue(conn._websocket_handler is self.handler)
+        self.assertEquals(conn.state,
+                          constants.connection_state.AWAITING_CONNECTION)
         self.assertEquals(self._get_connection_state_changes(), 1)
-        connection._on_data('C{0}A{1}'.format(chr(31), chr(30)))
-        self.assertEquals(connection.state,
-                          connection_state.AWAITING_AUTHENTICATION)
-        self.iostream.write_message.assert_not_called()
+        conn._on_data('C{0}A{1}'.format(chr(31), chr(30)))
+        self.assertEquals(conn.state,
+                          constants.connection_state.AWAITING_AUTHENTICATION)
+        self.handler.write_message.assert_not_called()
 
-        connection.authenticate({'user': 'Anon'})
-        self.assertEquals(connection.state,
-                          connection_state.AUTHENTICATING)
+        conn.authenticate({'user': 'Anon'})
+        self.assertEquals(conn.state,
+                          constants.connection_state.AUTHENTICATING)
+
         self.assertEquals(self._get_last_sent_message(),
                           "A{0}REQ{0}{{\"user\":\"Anon\"}}{1}".format(
                               chr(31), chr(30)).encode())
         self.assertEquals(self._get_connection_state_changes(), 3)
 
-        connection._on_data('A{0}A{1}'.format(chr(31), chr(30)))
-        self.assertEquals(connection.state,
-                          connection_state.OPEN)
+        conn._on_data('A{0}A{1}'.format(chr(31), chr(30)))
+        self.assertEquals(conn.state,
+                          constants.connection_state.OPEN)
         self.assertEquals(self._get_connection_state_changes(), 4)
 
-        connection.send_message('R', 'S', ['test1'])
-        self.iostream.write_message.assert_called_with(
+        conn.send_message('R', 'S', ['test1'])
+        self.handler.write_message.assert_called_with(
             'R{0}S{0}test1{1}'.format(chr(31), chr(30)).encode())
 
-        connection.close()
-        connection._on_close()
+        conn.close()
+        conn._on_close()
 
-        self.assertEquals(connection.state,
-                          connection_state.CLOSED)
+        self.assertEquals(conn.state,
+                          constants.connection_state.CLOSED)
         self.assertEquals(self._get_connection_state_changes(), 5)
 
     def test_connect_error(self):
-        connection = client._Connection(self.client, URL)
-        assert connection.state == connection_state.CLOSED
+        conn = connection.Connection(self.client, URL)
+        assert conn.state == constants.connection_state.CLOSED
         self.assertEquals(self._get_connection_state_changes(), 0)
         connect_future = mock.Mock()
         connect_future_config = {'exception.return_value': None,
-                                 'result.return_value': self.iostream}
+                                 'result.return_value': self.handler}
         connect_future.configure_mock(**connect_future_config)
         connect_future.exception.return_value = IOError(
             (errno.ECONNREFUSED, "Connection refused"))
-        connect_future.get_result.return_value = self.iostream
+        connect_future.get_result.return_value = self.handler
 
-        connection._on_open(connect_future)
-        self.assertEquals(connection.state,
-                          connection_state.RECONNECTING)
-        self.assertTrue(connection._reconnect_timeout is not None)
-        connection._on_open(connect_future)
-        connection._on_open(connect_future)
-        connection._on_open(connect_future)
-        self.assertEquals(connection.state,
-                          connection_state.ERROR)
+        conn._on_open(connect_future)
+        self.assertEquals(conn.state,
+                          constants.connection_state.RECONNECTING)
+        self.assertTrue(conn._reconnect_timeout is not None)
+        conn._on_open(connect_future)
+        conn._on_open(connect_future)
+        conn._on_open(connect_future)
+        self.assertEquals(conn.state,
+                          constants.connection_state.ERROR)
 
 if __name__ == '__main__':
     testing.unittest.main()

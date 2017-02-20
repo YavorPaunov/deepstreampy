@@ -24,10 +24,10 @@ class RPCHandlerTest(testing.AsyncTestCase):
         super(RPCHandlerTest, self).setUp()
         options = {'rpcResponseTimeout': 0.01, 'rpcAckTimeout': 0.01}
         self.client = client.Client(URL, **options)
-        self.iostream = mock.Mock()
-        self.iostream.stream.closed = mock.Mock(return_value=False)
+        self.handler = mock.Mock()
+        self.handler.stream.closed = mock.Mock(return_value=False)
         self.client._connection._state = constants.connection_state.OPEN
-        self.client._connection._stream = self.iostream
+        self.client._connection._websocket_handler = self.handler
         self.connection = self.client._connection
         self.io_loop = self.connection._io_loop
         self.rpc_calls = 0
@@ -56,7 +56,7 @@ class RPCHandlerTest(testing.AsyncTestCase):
 
         # Register a provider for addTwo RPC
         rpc_handler.provide('addTwo', self._add_two_callback)
-        self.iostream.write_message.assert_called_once_with(msg('P|S|addTwo+'))
+        self.handler.write_message.assert_called_once_with(msg('P|S|addTwo+'))
         self.assertEquals(self.rpc_calls, 0)
 
         # Timeout error emitted if no ack message received on time
@@ -73,7 +73,7 @@ class RPCHandlerTest(testing.AsyncTestCase):
                                       '678',
                                       'O{"numA":2,"numB":3,"sync":true}']})
         self.wait()
-        self.iostream.write_message.assert_called_with(
+        self.handler.write_message.assert_called_with(
             msg('P|RES|addTwo|678|N5+'))
 
         # Reply to an async RPC request
@@ -83,11 +83,11 @@ class RPCHandlerTest(testing.AsyncTestCase):
 
         self.connection._io_loop.call_later(0.1, self.stop)
         self.wait()
-        self.iostream.write_message.assert_called_with(
+        self.handler.write_message.assert_called_with(
             msg('P|A|REQ|addTwo|123+'))
 
         self.wait()
-        self.iostream.write_message.assert_called_with(
+        self.handler.write_message.assert_called_with(
             msg('P|RES|addTwo|123|N10+'))
 
         # Send rejection if no provider exists
@@ -95,12 +95,12 @@ class RPCHandlerTest(testing.AsyncTestCase):
                              'action': 'REQ',
                              'data': ['doesNotExist', '432',
                                       'O{"numA":7,"numB":3}']})
-        self.iostream.write_message.assert_called_with(
+        self.handler.write_message.assert_called_with(
             msg('P|REJ|doesNotExist|432+'))
 
         # Deregister provider for the addTwo RPC
         rpc_handler.unprovide('addTwo')
-        self.iostream.write_message.assert_called_with(msg('P|US|addTwo+'))
+        self.handler.write_message.assert_called_with(msg('P|US|addTwo+'))
 
         # Timeout emitted after no ACK message received for the unprovide
         self.client_errors = []
@@ -117,7 +117,7 @@ class RPCHandlerTest(testing.AsyncTestCase):
             'action': 'REQ',
             'data': ['addTwo', '434', 'O{"numA":2,"numB":7, "sync": true}']})
 
-        self.iostream.write_message.assert_called_with(msg('P|REJ|addTwo|434+'))
+        self.handler.write_message.assert_called_with(msg('P|REJ|addTwo|434+'))
 
     def test_make_rpcs(self):
         # RPCHandler is created
@@ -129,7 +129,7 @@ class RPCHandlerTest(testing.AsyncTestCase):
         # Make a successful RPC for addTwo
         rpc_callback = mock.Mock()
         rpc_handler.make('addTwo', {'numA': 3, 'numB': 8}, rpc_callback)
-        self.assertTrue(self.iostream.write_message.call_args[0][0] in
+        self.assertTrue(self.handler.write_message.call_args[0][0] in
                         (msg('P|REQ|addTwo|1|O{"numA":3,"numB":8}+'),
                          msg('P|REQ|addTwo|1|O{"numB":8,"numA":3}+')))
 
@@ -140,7 +140,7 @@ class RPCHandlerTest(testing.AsyncTestCase):
         rpc_callback.assert_called_with(None, 11)
 
         # Make RPC for addTwo but receive an error
-        self.assertTrue(self.iostream.write_message.call_args[0][0] in
+        self.assertTrue(self.handler.write_message.call_args[0][0] in
                         (msg('P|REQ|addTwo|1|O{"numA":3,"numB":8}+'),
                          msg('P|REQ|addTwo|1|O{"numB":8,"numA":3}+')))
 
@@ -153,7 +153,7 @@ class RPCHandlerTest(testing.AsyncTestCase):
 
         # Make RPC for addTwo but receive no ack in time
         rpc_handler.make('addTwo', {'numA': 3, 'numB': 8}, rpc_callback)
-        self.assertTrue(self.iostream.write_message.call_args[0][0] in
+        self.assertTrue(self.handler.write_message.call_args[0][0] in
                         (msg('P|REQ|addTwo|1|O{"numA":3,"numB":8}+'),
                          msg('P|REQ|addTwo|1|O{"numB":8,"numA":3}+')))
 
@@ -168,10 +168,10 @@ class RPCResponseTest(testing.AsyncTestCase):
         super(RPCResponseTest, self).setUp()
         options = {'rpcResponseTimeout': 0.01, 'rpcAckTimeout': 0.01}
         self.client = client.Client(URL, **options)
-        self.iostream = mock.Mock()
-        self.iostream.stream.closed = mock.Mock(return_value=False)
+        self.handler = mock.Mock()
+        self.handler.stream.closed = mock.Mock(return_value=False)
         self.client._connection._state = constants.connection_state.OPEN
-        self.client._connection._stream = self.iostream
+        self.client._connection._websocket_handler = self.handler
         self.connection = self.client._connection
         self.connection._io_loop = self.io_loop
         self.client_errors = []
@@ -186,12 +186,12 @@ class RPCResponseTest(testing.AsyncTestCase):
         response = rpc.RPCResponse(self.connection, 'addTwo', '123')
         self.io_loop.call_later(1, self.stop)
         self.wait()
-        self.iostream.write_message.assert_called_with(
+        self.handler.write_message.assert_called_with(
             msg('P|A|REQ|addTwo|123+'))
 
         # Send response
         response.send(14)
-        self.iostream.write_message.assert_called_with(
+        self.handler.write_message.assert_called_with(
             msg('P|RES|addTwo|123|N14+'))
 
     def test_send_no_autoack(self):
@@ -200,28 +200,28 @@ class RPCResponseTest(testing.AsyncTestCase):
         response.auto_ack = False
         self.io_loop.call_later(1, self.stop)
         self.wait()
-        self.iostream.write_message.assert_not_called()
+        self.handler.write_message.assert_not_called()
 
         # Send the ack
         response.ack()
-        self.iostream.write_message.assert_called_with(
+        self.handler.write_message.assert_called_with(
             msg('P|A|REQ|addTwo|123+'))
 
         # Do not send multiple ack messages
-        self.iostream.reset_mock()
+        self.handler.reset_mock()
         response.ack()
-        self.iostream.write_message.assert_not_called()
+        self.handler.write_message.assert_not_called()
 
     def test_reject(self):
         response = rpc.RPCResponse(self.connection, 'addTwo', '123')
         response.reject()
-        self.iostream.write_message.assert_called_with(
+        self.handler.write_message.assert_called_with(
             msg('P|REJ|addTwo|123+'))
         self.assertRaises(ValueError, functools.partial(response.send, 'abc'))
 
     def test_error(self):
         response = rpc.RPCResponse(self.connection, 'addTwo', '123')
         response.error('Error message')
-        self.iostream.write_message.assert_called_with(
+        self.handler.write_message.assert_called_with(
             msg('P|E|Error message|addTwo|123+'))
         self.assertRaises(ValueError, functools.partial(response.send, 'abc'))

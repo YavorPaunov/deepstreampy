@@ -25,7 +25,7 @@ class ListChangeTest(unittest.TestCase):
         self.iostream = mock.Mock()
         self.iostream.stream.closed = mock.Mock(return_value=False)
         self.client._connection._state = connection_state.OPEN
-        self.client._connection._stream = self.iostream
+        self.client._connection._websocket_handler = self.iostream
         self.record_handler = RecordHandler(
             self.client._connection, self.client)
 

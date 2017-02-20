@@ -20,10 +20,10 @@ class RecordTest(unittest.TestCase):
     def setUp(self):
         super(RecordTest, self).setUp()
         self.client = client.Client(URL)
-        self.iostream = mock.Mock()
-        self.iostream.stream.closed = mock.Mock(return_value=False)
+        self.handler = mock.Mock()
+        self.handler.stream.closed = mock.Mock(return_value=False)
         self.client._connection._state = connection_state.OPEN
-        self.client._connection._stream = self.iostream
+        self.client._connection._websocket_handler = self.handler
         self.connection = self.client._connection
         self.options = {'recordReadAckTimeout': 100, 'recordReadTimeout': 200}
         self.record_handler = RecordHandler(self.client._connection,
@@ -34,7 +34,7 @@ class RecordTest(unittest.TestCase):
         self.listA.on('discard', self.on_discard)
 
     def test_retrieve_list(self):
-        self.iostream.write_message.assert_called_with(
+        self.handler.write_message.assert_called_with(
             "R{0}CR{0}list_A{1}".format(chr(31), chr(30)).encode())
 
     def test_retreive_list_again(self):
@@ -57,7 +57,7 @@ class RecordTest(unittest.TestCase):
         self.listA2.discard()
         self.on_discard.assert_not_called()
         self.assertFalse(self.listA.is_destroyed)
-        self.iostream.write_message.assert_called_with(
+        self.handler.write_message.assert_called_with(
             "R{0}US{0}list_A{1}".format(chr(31), chr(30)).encode())
 
         self.record_handler._handle({

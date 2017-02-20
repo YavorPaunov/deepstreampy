@@ -50,7 +50,7 @@ def client_init(context):
 @given(u'the client is initialised with a small heartbeat interval')
 @testing.gen_test
 def client_init_small_heartbeat(context):
-    context.client = yield connect(FIRST_SERVER_URL, rpcResponseTimeout=0.2)
+    context.client = yield connect(FIRST_SERVER_URL, heartbeatInterval=1)
     context.client.get_uid = mock.Mock(return_value='<UID>')
 
     def error_callback(message, event, t):

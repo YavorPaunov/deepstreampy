@@ -23,10 +23,10 @@ class RecordTest(testing.AsyncTestCase):
     def setUp(self):
         super(RecordTest, self).setUp()
         self.client = client.Client(URL)
-        self.iostream = mock.Mock()
-        self.iostream.stream.closed = mock.Mock(return_value=False)
+        self.handler = mock.Mock()
+        self.handler.stream.closed = mock.Mock(return_value=False)
         self.client._connection._state = connection_state.OPEN
-        self.client._connection._stream = self.iostream
+        self.client._connection._websocket_handler = self.handler
         self.connection = self.client._connection
         self.io_loop = self.connection._io_loop
         self.options = {'recordReadAckTimeout': 100, 'recordReadTimeout': 200}
@@ -40,14 +40,14 @@ class RecordTest(testing.AsyncTestCase):
 
     def test_create_record(self):
         self.assertEqual(self.record.get(), {})
-        self.iostream.write_message.assert_called_with(
+        self.handler.write_message.assert_called_with(
             "R{0}CR{0}testRecord{1}".format(chr(31), chr(30)).encode())
 
     def test_send_update_message(self):
         self.record.set({'firstname': 'John'})
         expected = ("R{0}U{0}testRecord{0}1{0}{{\"firstname\":\"John\"}}{1}"
                     .format(chr(31), chr(30)).encode())
-        self.iostream.write_message.assert_called_with(expected)
+        self.handler.write_message.assert_called_with(expected)
         self.assertEqual(self.record.get(), {'firstname': 'John'})
         self.assertEquals(self.record.version, 1)
 
@@ -55,7 +55,7 @@ class RecordTest(testing.AsyncTestCase):
         self.record.set('Smith', 'lastname')
         expected = ("R{0}P{0}testRecord{0}1{0}lastname{0}SSmith{1}"
                     .format(chr(31), chr(30)).encode())
-        self.iostream.write_message.assert_called_with(expected)
+        self.handler.write_message.assert_called_with(expected)
 
     def test_delete_value(self):
         self.record.set({'firstname': 'John', 'lastname': 'Smith'})
@@ -67,7 +67,7 @@ class RecordTest(testing.AsyncTestCase):
 
     def tearDown(self):
         super(RecordTest, self).tearDown()
-        self.iostream.mock_reset()
+        self.handler.mock_reset()
 
 if __name__ == '__main__':
     unittest.main()

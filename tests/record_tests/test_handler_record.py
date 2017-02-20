@@ -19,10 +19,10 @@ class TestRecordRead(unittest.TestCase):
 
     def setUp(self):
         self.client = client.Client(URL)
-        self.iostream = mock.Mock()
-        self.iostream.stream.closed = mock.Mock(return_value=False)
+        self.handler = mock.Mock()
+        self.handler.stream.closed = mock.Mock(return_value=False)
         self.client._connection._state = connection_state.OPEN
-        self.client._connection._stream = self.iostream
+        self.client._connection._websocket_handler = self.handler
         self.client._io_loop = mock.Mock()
         self.record_handler = RecordHandler(self.client._connection,
                                             self.client)
@@ -37,7 +37,7 @@ class TestRecordRead(unittest.TestCase):
             'data': ['record_A', 0, '{}']})
 
     def test_retrieve(self):
-        self.iostream.write_message.assert_called_with(
+        self.handler.write_message.assert_called_with(
             "R{0}CR{0}record_A{1}".format(chr(31), chr(30)).encode())
 
     def test_initialise(self):
@@ -50,7 +50,7 @@ class TestRecordRead(unittest.TestCase):
         self.record_A.discard()
         self.on_discard.assert_not_called()
         self.assertFalse(self.record_A.is_destroyed)
-        self.iostream.write_message.assert_called_with(
+        self.handler.write_message.assert_called_with(
             "R{0}US{0}record_A{1}".format(chr(31), chr(30)).encode())
 
     def test_resubscribe(self):
@@ -69,8 +69,8 @@ class TestRecordRead(unittest.TestCase):
         self.assertTrue(self.record_A.is_destroyed)
 
     def tearDown(self):
-        self.iostream.reset_mock()
-        self.iostream.write_message.reset_mock()
+        self.handler.reset_mock()
+        self.handler.write_message.reset_mock()
 
 
 class TestRecordDeleted(unittest.TestCase):
@@ -89,10 +89,10 @@ class TestRecordDeleted(unittest.TestCase):
 
     def setUp(self):
         self.client = client.Client(URL)
-        self.iostream = mock.Mock()
-        self.iostream.stream.closed = mock.Mock(return_value=False)
+        self.handler = mock.Mock()
+        self.handler.stream.closed = mock.Mock(return_value=False)
         self.client._connection._state = connection_state.OPEN
-        self.client._connection._stream = self.iostream
+        self.client._connection._websocket_handler = self.handler
         self.client._io_loop = mock.Mock()
         self.record_handler = RecordHandler(self.client._connection,
                                             self.client)
@@ -101,7 +101,7 @@ class TestRecordDeleted(unittest.TestCase):
         self.record_A.on('delete', self.on_delete)
 
     def test_retrieve(self):
-        self.iostream.write_message.assert_called_with(
+        self.handler.write_message.assert_called_with(
             "R{0}CR{0}record_A{1}".format(chr(31), chr(30)).encode())
 
     def test_initialize(self):
@@ -129,5 +129,5 @@ class TestRecordDeleted(unittest.TestCase):
 
         new_record = self.record_handler.get_record('record_A')
         self.assertFalse(new_record is self.record_A)
-        self.iostream.write_message.assert_called_with(
+        self.handler.write_message.assert_called_with(
             "R{0}CR{0}record_A{1}".format(chr(31), chr(30)).encode())

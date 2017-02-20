@@ -24,10 +24,10 @@ class TestMergeConflict(unittest.TestCase):
             'merge_strategy': merge_strategies.remote_wins
         }
         self.client = client.Client(URL)
-        self.iostream = mock.Mock()
-        self.iostream.stream.closed = mock.Mock(return_value=False)
+        self.handler = mock.Mock()
+        self.handler.stream.closed = mock.Mock(return_value=False)
         self.client._connection._state = connection_state.OPEN
-        self.client._connection._stream = self.iostream
+        self.client._connection._websocket_handler = self.handler
         self.record = Record('someRecord', {}, self.client._connection, options,
                              self.client)
 
@@ -51,6 +51,6 @@ class TestMergeConflict(unittest.TestCase):
         self.record._on_message(message)
 
         self.error_callback.assert_not_called()
-        self.iostream.write_message.assert_called_with(
+        self.handler.write_message.assert_called_with(
             msg('R|U|someRecord|6|{"reason":"skippedVersion"}+'))
         self.subscribe_callback.assert_called_with({'reason': 'skippedVersion'})

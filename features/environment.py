@@ -69,7 +69,7 @@ def _create_server(port, path):
 
 
 def after_step(context, step):
-    context.io_loop.call_later(0.025, context.io_loop.stop)
+    context.io_loop.call_later(0.03, context.io_loop.stop)
     context.io_loop.start()
 
 

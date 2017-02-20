@@ -22,10 +22,10 @@ class PresenceHandlerTest(testing.AsyncTestCase):
     def setUp(self):
         super(PresenceHandlerTest, self).setUp()
         self.client = client.Client(URL)
-        self.iostream = mock.Mock()
-        self.iostream.stream.closed = mock.Mock(return_value=False)
+        self.handler = mock.Mock()
+        self.handler.stream.closed = mock.Mock(return_value=False)
         self.client._connection._state = connection_state.OPEN
-        self.client._connection._stream = self.iostream
+        self.client._connection._websocket_handler = self.handler
         self.connection = self.client._connection
         self.io_loop = self.connection._io_loop
         self.client_errors = []
@@ -40,7 +40,7 @@ class PresenceHandlerTest(testing.AsyncTestCase):
 
         # Send subscribe message
         self.client.presence.subscribe(callback)
-        self.iostream.write_message.assert_called_with(msg('U|S|S+'))
+        self.handler.write_message.assert_called_with(msg('U|S|S+'))
 
         # Emit timeout error
         self.wait()
@@ -72,7 +72,7 @@ class PresenceHandlerTest(testing.AsyncTestCase):
 
         # Query for clients
         self.client.presence.get_all(callback)
-        self.iostream.write_message.assert_called_with(msg('U|Q|Q+'))
+        self.handler.write_message.assert_called_with(msg('U|Q|Q+'))
 
         # Receive data for query
         self.client.presence._handle({'topic': 'U',
@@ -83,7 +83,7 @@ class PresenceHandlerTest(testing.AsyncTestCase):
 
         # Unsubscribe to client logins
         self.client.presence.unsubscribe(callback)
-        self.iostream.write_message.assert_called_with(msg('U|US|US+'))
+        self.handler.write_message.assert_called_with(msg('U|US|US+'))
 
         # emit ack timeout for unsubscribe
         self.wait()

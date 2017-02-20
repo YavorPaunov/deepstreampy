@@ -20,10 +20,10 @@ class ListTest(unittest.TestCase):
 
     def setUp(self):
         self.client = client.Client(URL)
-        self.iostream = mock.Mock()
-        self.iostream.stream.closed = mock.Mock(return_value=False)
+        self.handler = mock.Mock()
+        self.handler.stream.closed = mock.Mock(return_value=False)
         self.client._connection._state = connection_state.OPEN
-        self.client._connection._stream = self.iostream
+        self.client._connection._websocket_handler = self.handler
         self.record_handler = RecordHandler(
             self.client._connection, self.client)
         self.list = List(self.record_handler, 'someList', {})
@@ -34,7 +34,7 @@ class ListTest(unittest.TestCase):
 
     def test_create(self):
         self.assertNotEqual(self.list.get_entries(), None)
-        self.iostream.write_message.assert_called_with(msg("R|CR|someList+"))
+        self.handler.write_message.assert_called_with(msg("R|CR|someList+"))
         self.ready_callback.assert_not_called()
 
     def test_empty(self):
@@ -58,7 +58,7 @@ class ListTest(unittest.TestCase):
         self.change_callback.assert_called_with(['entryA', 'entryB', 'entryC'])
         self.assertEqual(self.list.get_entries(),
                          ['entryA', 'entryB', 'entryC'])
-        self.iostream.write_message.assert_called_with(
+        self.handler.write_message.assert_called_with(
             msg('R|U|someList|2|["entryA","entryB","entryC"]+'))
 
     def test_remove(self):
@@ -69,7 +69,7 @@ class ListTest(unittest.TestCase):
         self.list.remove_entry('entryB')
         self.change_callback.assert_called_with(['entryA'])
         self.assertEqual(self.list.get_entries(), ['entryA'])
-        self.iostream.write_message.assert_called_with(
+        self.handler.write_message.assert_called_with(
             msg('R|U|someList|2|["entryA"]+'))
 
     def test_insert(self):
@@ -80,7 +80,7 @@ class ListTest(unittest.TestCase):
         self.change_callback.assert_called_with(['entryA', 'entryC', 'entryB'])
         self.assertEqual(self.list.get_entries(),
                          ['entryA', 'entryC', 'entryB'])
-        self.iostream.write_message.assert_called_with(
+        self.handler.write_message.assert_called_with(
             msg('R|U|someList|2|["entryA","entryC","entryB"]+'))
 
     def test_remove_at_index(self):
@@ -89,7 +89,7 @@ class ListTest(unittest.TestCase):
              'data': ['someList', 1, '["entryA", "entryB", "entryC"]']})
         self.list.remove_at(1)
         self.change_callback.assert_called_with(['entryA', 'entryC'])
-        self.iostream.write_message.assert_called_with(
+        self.handler.write_message.assert_called_with(
             msg('R|U|someList|2|["entryA","entryC"]+'))
 
     def test_set_entire_list(self):
