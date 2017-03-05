@@ -12,6 +12,8 @@ from deepstreampy.utils import Listener
 from deepstreampy.utils import AckTimeoutRegistry
 from deepstreampy.utils import ResubscribeNotifier
 
+from tornado import concurrent
+
 from pyee import EventEmitter
 
 
@@ -43,13 +45,19 @@ class EventHandler(object):
             callback (callable): The function to call when an event is received.
 
         """
+        future = None
         if not self._emitter.listeners(name):
             self._ack_timeout_registry.add(name, actions.SUBSCRIBE)
-            self._connection.send_message(topic_constants.EVENT,
-                                          actions.SUBSCRIBE,
-                                          [name])
+            future = self._connection.send_message(topic_constants.EVENT,
+                                                   actions.SUBSCRIBE,
+                                                   [name])
+        else:
+            future = concurrent.Future()
+            future.set_result(None)
 
         self._emitter.on(name, callback)
+
+        return future
 
     def unsubscribe(self, name, callback):
         """Unsubscribe from an event.
@@ -66,9 +74,13 @@ class EventHandler(object):
 
         if not self._emitter.listeners(name):
             self._ack_timeout_registry.add(name, actions.UNSUBSCRIBE)
-            self._connection.send_message(topic_constants.EVENT,
-                                          actions.UNSUBSCRIBE,
-                                          [name])
+            return self._connection.send_message(topic_constants.EVENT,
+                                                 actions.UNSUBSCRIBE,
+                                                 [name])
+
+        future = concurrent.Future()
+        future.set_result(None)
+        return future
 
     def emit(self, name, data):
         """Emit an event locally, and tell the server to broadcast it.
@@ -80,10 +92,13 @@ class EventHandler(object):
             data: JSON serializable data to send along with the event.
 
         """
-        self._connection.send_message(topic_constants.EVENT,
-                                      actions.EVENT,
-                                      [name, message_builder.typed(data)])
+        future = self._connection.send_message(
+            topic_constants.EVENT, actions.EVENT,
+            [name, message_builder.typed(data)])
+
         self._emitter.emit(name, data)
+
+        return future
 
     def listen(self, pattern, callback):
         """Register as listener for event subscriptions from other clients.
@@ -101,18 +116,25 @@ class EventHandler(object):
         """
         if (pattern in self._listener and
                 not self._listener[pattern].destroy_pending):
-            return self._client._on_error(topic_constants.EVENT,
-                                          event_constants.LISTENER_EXISTS,
-                                          pattern)
+            self._client._on_error(topic_constants.EVENT,
+                                   event_constants.LISTENER_EXISTS,
+                                   pattern)
+            future = concurrent.Future()
+            future.set_result(None)
+            return future
+
         elif pattern in self._listener:
             self._listener[pattern].destroy()
 
-        self._listener[pattern] = Listener(topic_constants.EVENT,
-                                           pattern,
-                                           callback,
-                                           self._options,
-                                           self._client,
-                                           self._connection)
+        listener = Listener(topic_constants.EVENT,
+                            pattern,
+                            callback,
+                            self._options,
+                            self._client,
+                            self._connection)
+        self._listener[pattern] = listener
+
+        return listener.send_future
 
     def unlisten(self, pattern):
         """Stop listening to the specified pattern.
@@ -127,7 +149,9 @@ class EventHandler(object):
             self._client._on_error(topic_constants.ERROR,
                                    event_constants.NOT_LISTENING,
                                    pattern)
-            return
+            future = concurrent.Future()
+            future.set_result(None)
+            return future
 
         listener = self._listener[pattern]
 
@@ -137,6 +161,8 @@ class EventHandler(object):
             self._ack_timeout_registry.add(pattern, actions.UNLISTEN)
             listener.destroy()
             del self._listener[pattern]
+
+        return listener.send_future
 
     def _handle(self, message):
         action = message['action']

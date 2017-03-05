@@ -50,6 +50,9 @@ def convert_typed(value, client):
     if value_type == types.STRING:
         return value[1:]
 
+    if value_type == types.NULL:
+        return None
+
     if value_type == types.OBJECT:
         try:
             return json.loads(value[1:])

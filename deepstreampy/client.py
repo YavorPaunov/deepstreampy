@@ -86,12 +86,6 @@ class Client(EventEmitter):
         """
         return self._connection.connect(callback)
 
-    def start(self):
-        self._connection.start()
-
-    def stop(self):
-        self._connection.stop()
-
     def close(self):
         self._connection.close()
 

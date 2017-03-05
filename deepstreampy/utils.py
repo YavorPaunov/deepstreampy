@@ -1,8 +1,14 @@
+from __future__ import absolute_import, division, print_function, with_statement
+from __future__ import unicode_literals
+
 from deepstreampy.constants import actions as action_constants
 from deepstreampy.constants import event as event_constants
 from deepstreampy.constants import connection_state
-from functools import partial
+
 from pyee import EventEmitter
+from tornado import concurrent
+
+from functools import partial
 import sys
 
 num_types = ((int, long, float, complex) if sys.version_info < (3,) else
@@ -30,12 +36,18 @@ class SingleNotifier(object):
     def request(self, name, callback):
         if name not in self._requests:
             self._requests[name] = []
-            self._connection.send_message(self._topic, self._action, [name])
+            future = self._connection.send_message(
+                self._topic, self._action, [name])
+        else:
+            future = concurrent.Future()
+            future.set_result()
 
         response_timeout = self._client.io_loop.call_later(
             self._timeout_duration, partial(self._on_response_timeout, name))
         self._requests[name].append({'timeout': response_timeout,
                                      'callback': callback})
+
+        return future
 
     def receive(self, name, error, data):
         entries = self._requests[name]
@@ -53,8 +65,8 @@ class SingleNotifier(object):
 
     def _resend_requests(self):
         for request in self._requests:
-            self._connection.send_message(self._topic, self._action,
-                                          [self._requests[request]])
+            self._connection.send_message(
+                self._topic, self._action, [self._requests[request]])
 
 
 class Listener(object):
@@ -68,6 +80,7 @@ class Listener(object):
         self._options = options
         self._client = client
         self._connection = connection
+        self._send_future = None
 
         # TODO: Use subscribe timeout from options
         self._ack_timeout = connection._io_loop.call_later(1,
@@ -79,9 +92,10 @@ class Listener(object):
 
     def send_destroy(self):
         self._destroy_pending = True
-        self._connection.send_message(self._type, action_constants.UNLISTEN,
-                                      [self._pattern])
+        future = self._connection.send_message(
+            self._type, action_constants.UNLISTEN, [self._pattern])
         self._resubscribe_notifier.destroy()
+        return future
 
     def destroy(self):
         self._callback = None
@@ -90,14 +104,12 @@ class Listener(object):
         self._connection = None
 
     def accept(self, name):
-        self._connection.send_message(self._type,
-                                      action_constants.LISTEN_ACCEPT,
-                                      [self._pattern, name])
+        return self._connection.send_message(
+            self._type, action_constants.LISTEN_ACCEPT, [self._pattern, name])
 
     def reject(self, name):
-        self._connection.send_message(self._type,
-                                      action_constants.LISTEN_REJECT,
-                                      [self._pattern, name])
+        return self._connection.send_message(
+            self._type, action_constants.LISTEN_REJECT, [self._pattern, name])
 
     def _create_callback_response(self, message):
         return {'accept': partial(self.accept, message['data'][1]),
@@ -120,8 +132,8 @@ class Listener(object):
             self._callback(message['data'][1], is_found)
 
     def _send_listen(self):
-        self._connection.send_message(self._type, action_constants.LISTEN,
-                                      [self._pattern])
+        self._send_future = self._connection.send_message(
+            self._type, action_constants.LISTEN, [self._pattern])
 
     def _on_ack_timeout(self):
         self._client._on_error(self._type, event_constants.ACK_TIMEOUT,
@@ -131,6 +143,10 @@ class Listener(object):
     @property
     def destroy_pending(self):
         return self._destroy_pending
+
+    @property
+    def send_future(self):
+        return self._send_future
 
 
 class ResubscribeNotifier(object):
@@ -143,6 +159,7 @@ class ResubscribeNotifier(object):
 
     Resubscribe logic should only occur once per connection loss.
     """
+
     def __init__(self, client, resubscribe):
         """
         Args:
@@ -221,8 +238,10 @@ def _pad_list(l, index, value):
 
 
 class Undefined(object):
+
     def __repr__(self):
         return 'Undefined'
+
 Undefined = Undefined()
 
 

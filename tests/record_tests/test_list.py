@@ -5,8 +5,10 @@ from deepstreampy import client
 from deepstreampy.record import RecordHandler, List
 from deepstreampy.constants import connection_state
 from tests.util import msg
-import unittest
+from tornado import testing, concurrent
+
 import sys
+from functools import partial
 
 if sys.version_info[0] < 3:
     import mock
@@ -16,17 +18,24 @@ else:
 URL = "ws://localhost:7777/deepstream"
 
 
-class ListTest(unittest.TestCase):
+class ListTest(testing.AsyncTestCase):
 
     def setUp(self):
+        super(ListTest, self).setUp()
         self.client = client.Client(URL)
         self.handler = mock.Mock()
         self.handler.stream.closed = mock.Mock(return_value=False)
         self.client._connection._state = connection_state.OPEN
         self.client._connection._websocket_handler = self.handler
+        future = concurrent.Future()
+        future.set_result(None)
+        self.client._connection._websocket_handler.write_message = mock.Mock(
+            return_value=future)
         self.record_handler = RecordHandler(
             self.client._connection, self.client)
-        self.list = List(self.record_handler, 'someList', {})
+        record = self.io_loop.run_sync(
+            partial(self.record_handler.get_record, 'someList'))
+        self.list = List(self.record_handler, record, {})
         self.change_callback = mock.Mock()
         self.ready_callback = mock.Mock()
         self.list.subscribe(self.change_callback)

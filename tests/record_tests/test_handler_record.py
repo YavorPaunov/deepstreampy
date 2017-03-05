@@ -4,8 +4,11 @@ from __future__ import unicode_literals
 from deepstreampy import client
 from deepstreampy.record import RecordHandler
 from deepstreampy.constants import connection_state
-import unittest
+
+from tornado import testing, concurrent
+
 import sys
+from functools import partial
 
 if sys.version_info[0] < 3:
     import mock
@@ -15,19 +18,26 @@ else:
 URL = "ws://localhost:7777/deepstream"
 
 
-class TestRecordRead(unittest.TestCase):
+class TestRecordRead(testing.AsyncTestCase):
 
     def setUp(self):
+        super(TestRecordRead, self).setUp()
+
         self.client = client.Client(URL)
         self.handler = mock.Mock()
         self.handler.stream.closed = mock.Mock(return_value=False)
         self.client._connection._state = connection_state.OPEN
         self.client._connection._websocket_handler = self.handler
         self.client._io_loop = mock.Mock()
+        future = concurrent.Future()
+        future.set_result(None)
+        self.handler.write_message = mock.Mock(
+            return_value=future)
         self.record_handler = RecordHandler(self.client._connection,
                                             self.client)
         self.on_discard = mock.Mock()
-        self.record_A = self.record_handler.get_record('record_A')
+        self.record_A = self.io_loop.run_sync(
+            partial(self.record_handler.get_record, 'record_A'))
         self.record_A.on('discard', self.on_discard)
 
     def _initialise(self):
@@ -73,7 +83,7 @@ class TestRecordRead(unittest.TestCase):
         self.handler.write_message.reset_mock()
 
 
-class TestRecordDeleted(unittest.TestCase):
+class TestRecordDeleted(testing.AsyncTestCase):
 
     def _create_empty(self):
         self.record_handler._handle({
@@ -88,6 +98,8 @@ class TestRecordDeleted(unittest.TestCase):
             'data': ['D', 'record_A']})
 
     def setUp(self):
+        super(TestRecordDeleted, self).setUp()
+
         self.client = client.Client(URL)
         self.handler = mock.Mock()
         self.handler.stream.closed = mock.Mock(return_value=False)
@@ -96,8 +108,13 @@ class TestRecordDeleted(unittest.TestCase):
         self.client._io_loop = mock.Mock()
         self.record_handler = RecordHandler(self.client._connection,
                                             self.client)
+        future = concurrent.Future()
+        future.set_result(None)
+        self.client._connection._websocket_handler.write_message = mock.Mock(
+            return_value=future)
         self.on_delete = mock.Mock()
-        self.record_A = self.record_handler.get_record('record_A')
+        self.record_A = self.io_loop.run_sync(
+            partial(self.record_handler.get_record, 'record_A'))
         self.record_A.on('delete', self.on_delete)
 
     def test_retrieve(self):

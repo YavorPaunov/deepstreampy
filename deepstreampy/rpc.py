@@ -11,6 +11,8 @@ from deepstreampy.message import message_parser
 from deepstreampy.utils import AckTimeoutRegistry
 from deepstreampy.utils import ResubscribeNotifier
 
+from tornado import concurrent
+
 from functools import partial
 
 
@@ -45,11 +47,16 @@ class RPCResponse(object):
 
         """
         if not self._is_acknowledged:
-            self._connection.send_message(
+            future = self._connection.send_message(
                 topic_constants.RPC,
                 actions.ACK,
                 [actions.REQUEST, self._name, self._correletaion_id])
             self._is_acknowledged = True
+        else:
+            future = concurrent.Future()
+            future.set_result(None)
+
+        return future
 
     def reject(self):
         """Reject the request.
@@ -66,7 +73,7 @@ class RPCResponse(object):
         self.auto_ack = False
         self._is_complete = True
         self._is_acknowledged = True
-        self._connection.send_message(
+        return self._connection.send_message(
             topic_constants.RPC,
             actions.REJECTION,
             [self._name, self._correletaion_id])
@@ -82,11 +89,12 @@ class RPCResponse(object):
         self.ack()
 
         typed_data = message_builder.typed(data)
-        self._connection.send_message(
+        self._is_complete = True
+
+        return self._connection.send_message(
             topic_constants.RPC,
             actions.RESPONSE,
             [self._name, self._correletaion_id, typed_data])
-        self._is_complete = True
 
     def error(self, error_str):
         """Notify the server that an error has occured.
@@ -96,7 +104,7 @@ class RPCResponse(object):
         self.auto_ack = False
         self._is_complete = True
         self._is_acknowledged = True
-        self._connection.send_message(
+        return self._connection.send_message(
             topic_constants.RPC,
             actions.ERROR,
             [error_str, self._name, self._correletaion_id])
@@ -166,9 +174,10 @@ class RPCHandler(object):
 
         self._ack_timeout_registry.add(name, actions.SUBSCRIBE)
         self._providers[name] = callback
-        self._connection.send_message(topic_constants.RPC,
-                                      actions.SUBSCRIBE,
-                                      [name])
+
+        return self._connection.send_message(topic_constants.RPC,
+                                             actions.SUBSCRIBE,
+                                             [name])
 
     def unprovide(self, name):
         if not name:
@@ -177,9 +186,14 @@ class RPCHandler(object):
         if name in self._providers:
             del self._providers[name]
             self._ack_timeout_registry.add(name, actions.UNSUBSCRIBE)
-            self._connection.send_message(topic_constants.RPC,
-                                          actions.UNSUBSCRIBE,
-                                          [name])
+            future = self._connection.send_message(topic_constants.RPC,
+                                                   actions.UNSUBSCRIBE,
+                                                   [name])
+        else:
+            future = concurrent.Future()
+            future.set_result(None)
+
+        return future
 
     def make(self, name, data, callback):
         if not name:
@@ -187,11 +201,10 @@ class RPCHandler(object):
 
         uid = self._client.get_uid()
         typed_data = message_builder.typed(data)
-
         self._rpcs[uid] = RPC(callback, self._client, **self._options)
-        self._connection.send_message(topic_constants.RPC,
-                                      actions.REQUEST,
-                                      [name, uid, typed_data])
+
+        return self._connection.send_message(
+            topic_constants.RPC, actions.REQUEST, [name, uid, typed_data])
 
     def _get_rpc(self, correlation_id, rpc_name, raw_message):
         if correlation_id not in self._rpcs:

@@ -2,13 +2,16 @@ from __future__ import absolute_import, division, print_function, with_statement
 from __future__ import unicode_literals
 
 from deepstreampy import client
-from deepstreampy.record import RecordHandler, List
+from deepstreampy.record import RecordHandler, Record, List
 from deepstreampy.record import ENTRY_ADDED_EVENT
 from deepstreampy.record import ENTRY_REMOVED_EVENT
 from deepstreampy.record import ENTRY_MOVED_EVENT
 from deepstreampy.constants import connection_state
-import unittest
+
+from tornado import testing, concurrent
+
 import sys
+from functools import partial
 
 if sys.version_info[0] < 3:
     import mock
@@ -18,18 +21,29 @@ else:
 URL = "ws://localhost:7777/deepstream"
 
 
-class ListChangeTest(unittest.TestCase):
+class ListChangeTest(testing.AsyncTestCase):
 
     def setUp(self):
+        super(ListChangeTest, self).setUp()
         self.client = client.Client(URL)
-        self.iostream = mock.Mock()
-        self.iostream.stream.closed = mock.Mock(return_value=False)
+        self.handler = mock.Mock()
+        self.handler.stream.closed = mock.Mock(return_value=False)
         self.client._connection._state = connection_state.OPEN
-        self.client._connection._websocket_handler = self.iostream
+        self.client._connection._websocket_handler = self.handler
+        self.client._io_loop = mock.Mock()
+
+        future = concurrent.Future()
+        future.set_result(None)
+
+        self.handler.write_message = mock.Mock(
+            return_value=future)
+
         self.record_handler = RecordHandler(
             self.client._connection, self.client)
 
-        self.list = List(self.record_handler, 'someList', {})
+        record = self.io_loop.run_sync(
+            partial(self.record_handler.get_record, 'someList'))
+        self.list = List(self.record_handler, record, {})
         self.record_handler._handle({'topic': 'R', 'action': 'R',
                                      'data': ['someList', 1, '{}']})
 
@@ -99,7 +113,7 @@ class ListChangeTest(unittest.TestCase):
         self.list.add_entry('b')
         callback.assert_called_once_with('b', 5)
 
-    def test_notify_on_remvoe_second(self):
+    def test_notify_on_remove_second(self):
         callback = mock.Mock()
         self.list.set_entries(['a', 'b', 'c', 'd', 'c', 'e'])
         self.list.on(ENTRY_REMOVED_EVENT, callback)
@@ -121,7 +135,7 @@ class ListChangeTest(unittest.TestCase):
         self.assertEqual(move_callback.call_count, 3)
         self.assertEqual(remove_callback.call_count, 1)
 
-    def test_notify_on_add_move_remvoe(self):
+    def test_notify_on_add_move_remove(self):
         remove_callback = mock.Mock()
         move_callback = mock.Mock()
         add_callback = mock.Mock()

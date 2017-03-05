@@ -12,6 +12,8 @@ from deepstreampy.constants import merge_strategies
 from deepstreampy import jsonpath
 
 from pyee import EventEmitter
+from tornado import gen, concurrent
+
 import re
 import json
 from functools import partial
@@ -62,7 +64,7 @@ class Record(EventEmitter, object):
         self._delete_ack_timeout = None
         self._discard_timeout = None
 
-        self._send_read()
+        self._read_future = self._send_read()
 
     def get(self, path=None):
         # TODO: Use self._options['recordDeepCopy']
@@ -120,6 +122,8 @@ class Record(EventEmitter, object):
         self._emitter.remove_listener(event, callback)
 
     def discard(self):
+        future = concurrent.Future()
+
         if self._check_destroyed('discard'):
             return
 
@@ -131,12 +135,19 @@ class Record(EventEmitter, object):
                 self._discard_timeout = self._client.io_loop.call_later(
                     1, partial(self._on_timeout, event_constants.ACK_TIMEOUT))
 
-                self._connection.send_message(topic_constants.RECORD,
-                                              action_constants.UNSUBSCRIBE,
-                                              [self.name])
+                send_future = self._connection.send_message(
+                    topic_constants.RECORD,
+                    action_constants.UNSUBSCRIBE,
+                    [self.name])
+                send_future.add_done_callback(
+                    lambda f: future.set_result(f.result()))
+
         self.when_ready(ready_callback)
+        return future
 
     def delete(self):
+        future = concurrent.Future()
+
         if self._check_destroyed('delete'):
             return
 
@@ -145,11 +156,13 @@ class Record(EventEmitter, object):
             self._delete_ack_timeout = self._client.io_loop.call_later(
                 1, partial(self._on_timeout, event_constants.DELETE_TIMEOUT))
 
-            self._connection.send_message(topic_constants.RECORD,
-                                          action_constants.DELETE,
-                                          [self.name])
+            send_future = self._connection.send_message(
+                topic_constants.RECORD, action_constants.DELETE, [self.name])
+            send_future.add_done_callback(
+                lambda f: future.set_result(f.result()))
 
         self.when_ready(ready_callback)
+        return future
 
     def when_ready(self, callback):
         if self._is_ready:
@@ -217,7 +230,7 @@ class Record(EventEmitter, object):
             self, remote_version, remote_data, message, error, data):
         if not error:
             old_version = self.version
-            self.version = remote_version
+            self.version = int(remote_version)
 
             old_value = deepcopy(self._data)
             new_value = jsonpath.set(old_value, None, data, False)
@@ -345,9 +358,8 @@ class Record(EventEmitter, object):
         Sends the read message, either initially at record creation or after a
         lost connection has been re-established.
         """
-        self._connection.send_message(topic_constants.RECORD,
-                                      action_constants.CREATEORREAD,
-                                      [self.name])
+        return self._connection.send_message(
+            topic_constants.RECORD, action_constants.CREATEORREAD, [self.name])
 
     def _get_path(self, path):
         if path not in self._paths:
@@ -430,14 +442,19 @@ class Record(EventEmitter, object):
     def is_ready(self):
         return self._is_ready
 
+    @property
+    def read_future(self):
+        return self._read_future
+
 
 class List(EventEmitter, object):
     # TODO: Consider making List a subclass of Record
 
-    def __init__(self, record_handler, name, options):
+    def __init__(self, record_handler, record, options):
         super(List, self).__init__()
         self._record_handler = record_handler
-        self._record = self._record_handler.get_record(name, options)
+        self._record = record
+
         self._apply_record_update = self._record._apply_update
         self._record._apply_update = self._apply_update
 
@@ -446,7 +463,7 @@ class List(EventEmitter, object):
         self._record.on('ready', self._on_ready)
 
         self._is_ready = self._record.is_ready
-        self.name = name
+        self.name = record.name
 
         self._emitter = EventEmitter()
 
@@ -458,6 +475,7 @@ class List(EventEmitter, object):
         self.delete = self._record.delete
         self.discard = self._record.discard
         self.when_ready = self._record.when_ready
+        self.usages = self._record.usages
 
     def get_entries(self):
         entries = self._record.get()
@@ -647,6 +665,7 @@ class RecordHandler(EventEmitter, object):
                                                  action_constants.SNAPSHOT,
                                                  5)  # TODO: Use options
 
+    @gen.coroutine
     def get_record(self, name, record_options=None):
         """
         Return an existing record or creates a new one.
@@ -669,15 +688,20 @@ class RecordHandler(EventEmitter, object):
 
             record.usages += 1
 
-        return record
+        yield record.read_future
+        raise gen.Return(record)
 
+    @gen.coroutine
     def get_list(self, name, options=None):
+        record = yield self.get_record(name)
         if name not in self._lists:
-            self._lists[name] = List(self, name, options)
+            _list = List(self, record, options)
+            self._lists[name] = _list
         else:
+            _list = self._lists[name]
             self._records[name].usages += 1
 
-        return self._lists[name]
+        raise gen.Return(_list)
 
     def get_anonymous_record(self):
         raise NotImplementedError()
@@ -686,38 +710,58 @@ class RecordHandler(EventEmitter, object):
         if pattern in self._listeners:
             self._client._on_error(topic_constants.RECORD,
                                    event_constants.LISTENER_EXISTS, pattern)
+            future = concurrent.Future()
+            future.set_result(None)
         else:
-            self._listeners[pattern] = Listener(topic_constants.RECORD,
-                                                pattern,
-                                                callback,
-                                                self._options,
-                                                self._client,
-                                                self._connection)
+            listener = Listener(topic_constants.RECORD,
+                                pattern,
+                                callback,
+                                self._options,
+                                self._client,
+                                self._connection)
+            self._listeners[pattern] = listener
+            future = listener.send_future
+
+        return future
 
     def unlisten(self, pattern):
         if pattern in self._listeners:
             listener = self._listeners[pattern]
             if not listener.destroy_pending:
                 listener.send_destroy()
+                future = concurrent.Future()
+                future.set_result(None)
             else:
-                listener.destroy()
+                future = listener.destroy()
                 del self._listeners[pattern]
         else:
             self._client._on_error(topic_constants.RECORD,
                                    event_constants.NOT_LISTENING,
                                    pattern)
+            future = concurrent.Future()
+            future.set_result(None)
+
+        return future
 
     def snapshot(self, name, callback):
         if name in self._records and self._records[name].is_ready:
             callback(None, self._records[name].get())
+            future = concurrent.Future()
+            future.set_result(None)
         else:
-            self._snapshot_registry.request(name, callback)
+            future = self._snapshot_registry.request(name, callback)
+
+        return future
 
     def has(self, name, callback):
         if name in self._records:
             callback(None, True)
+            future = concurrent.Future()
+            future.set_result(None)
         else:
-            self._has_registry.request(name, callback)
+            future = self._has_registry.request(name, callback)
+
+        return future
 
     def _handle(self, message):
         action = message['action']
@@ -732,7 +776,8 @@ class RecordHandler(EventEmitter, object):
             return
 
         if action in (action_constants.ACK, action_constants.ERROR):
-            name = message['data'][1]
+            # TODO: Start from here
+            name = data[1]
             if data[0] in (action_constants.DELETE,
                            action_constants.UNSUBSCRIBE):
                 self._destroy_emitter.emit('destroy_ack_' + name, message)

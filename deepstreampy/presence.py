@@ -7,6 +7,7 @@ from deepstreampy.constants import event as event_constants
 from deepstreampy.utils import AckTimeoutRegistry
 from deepstreampy.utils import ResubscribeNotifier
 
+from tornado import concurrent
 from pyee import EventEmitter
 
 
@@ -24,19 +25,30 @@ class PresenceHandler(object):
 
     def get_all(self, callback):
         if not self._emitter.listeners(action_constants.QUERY):
-            self._connection.send_message(topic_constants.PRESENCE,
-                                          action_constants.QUERY,
-                                          [action_constants.QUERY])
+            future = self._connection.send_message(
+                topic_constants.PRESENCE,
+                action_constants.QUERY,
+                [action_constants.QUERY])
+        else:
+            future = concurrent.Future()
+            future.set_result()
+
         self._emitter.once(action_constants.QUERY, callback)
+        return future
 
     def subscribe(self, callback):
         if not self._emitter.listeners(topic_constants.PRESENCE):
             self._ack_timeout_registry.add(
                 topic_constants.PRESENCE, action_constants.SUBSCRIBE)
-            self._connection.send_message(topic_constants.PRESENCE,
-                                          action_constants.SUBSCRIBE,
-                                          [action_constants.SUBSCRIBE])
+            future = self._connection.send_message(topic_constants.PRESENCE,
+                                                   action_constants.SUBSCRIBE,
+                                                   [action_constants.SUBSCRIBE])
+        else:
+            future = concurrent.Future()
+            future.set_result()
+
         self._emitter.on(topic_constants.PRESENCE, callback)
+        return future
 
     def unsubscribe(self, callback):
         self._emitter.remove_listener(topic_constants.PRESENCE, callback)
@@ -44,9 +56,15 @@ class PresenceHandler(object):
         if not self._emitter.listeners(topic_constants.PRESENCE):
             self._ack_timeout_registry.add(topic_constants.PRESENCE,
                                            action_constants.UNSUBSCRIBE)
-            self._connection.send_message(topic_constants.PRESENCE,
-                                          action_constants.UNSUBSCRIBE,
-                                          [action_constants.UNSUBSCRIBE])
+            future = self._connection.send_message(
+                topic_constants.PRESENCE,
+                action_constants.UNSUBSCRIBE,
+                [action_constants.UNSUBSCRIBE])
+        else:
+            future = concurrent.Future()
+            future.set_result()
+
+        return future
 
     def _handle(self, message):
         action = message['action']

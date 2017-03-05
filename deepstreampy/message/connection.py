@@ -5,7 +5,7 @@ from deepstreampy.utils import str_types
 from deepstreampy import constants
 from deepstreampy.message import message_builder, message_parser
 
-from tornado import ioloop, concurrent, websocket
+from tornado import ioloop, concurrent, websocket, gen
 
 from collections import deque
 import errno
@@ -244,7 +244,7 @@ class Connection(object):
 
     def send_message(self, topic, action, data):
         message = message_builder.get_message(topic, action, data)
-        self.send(message)
+        return self.send(message)
 
     def send(self, raw_message):
         """Main method for sending messages.
@@ -252,23 +252,26 @@ class Connection(object):
         All messages are passed onto and handled by tornado.
         """
         if not self._websocket_handler.stream.closed():
-            self._websocket_handler.write_message(raw_message.encode())
+            return self._websocket_handler.write_message(raw_message.encode())
         else:
-            self._queued_messages.append(raw_message.encode())
+            future = concurrent.Future()
+            self._queued_messages.append((raw_message.encode(), future))
+            return future
 
+    @gen.coroutine
     def _send_queued_messages(self):
         if self._state != constants.connection_state.OPEN:
             return
 
         while self._queued_messages:
-            raw_message = self._queued_messages.popleft()
-            self._websocket_handler.write_message(raw_message)
+            raw_message, future = self._queued_messages.popleft()
+            result = yield self._websocket_handler.write_message(raw_message)
+            future.set_result(result)
 
     def _on_data(self, data):
         if data is None:
             self._on_close()
             return
-
         full_buffer = self._message_buffer + data
         split_buffer = full_buffer.rsplit(constants.message.MESSAGE_SEPERATOR,
                                           1)
@@ -282,7 +285,6 @@ class Connection(object):
         for msg in parsed_messages:
             if msg is None:
                 continue
-
             if msg['topic'] == constants.topic.CONNECTION:
                 self._handle_connection_response(msg)
             elif msg['topic'] == constants.topic.AUTH:

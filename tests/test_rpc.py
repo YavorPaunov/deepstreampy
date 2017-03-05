@@ -194,12 +194,11 @@ class RPCResponseTest(testing.AsyncTestCase):
         self.handler.write_message.assert_called_with(
             msg('P|RES|addTwo|123|N14+'))
 
+    @testing.gen_test
     def test_send_no_autoack(self):
         # Create response but disable autoack
         response = rpc.RPCResponse(self.connection, 'addTwo', '123')
         response.auto_ack = False
-        self.io_loop.call_later(1, self.stop)
-        self.wait()
         self.handler.write_message.assert_not_called()
 
         # Send the ack

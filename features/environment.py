@@ -21,16 +21,28 @@ class DeepstreamHandler(websocket.WebSocketHandler):
         self._close_future = None
 
     def on_message(self, message):
-        DeepstreamHandler.received_messages[self.request.path].append(message)
+        for path, handlers in DeepstreamHandler.connections.iteritems():
+            if self in handlers:
+                break
+
+        DeepstreamHandler.received_messages[path].append(message)
         if self._msg_future:
             self._msg_future.set_result(message)
 
     def write_message(self, message):
-        DeepstreamHandler.sent_messages[self.request.path].append(message)
-        super(DeepstreamHandler, self).write_message(message)
+        for path, handlers in DeepstreamHandler.connections.iteritems():
+            if self in handlers:
+                break
+
+        DeepstreamHandler.sent_messages[path].append(message)
+        return super(DeepstreamHandler, self).write_message(message)
 
     def on_close(self):
-        DeepstreamHandler.connections[self.request.path].discard(self)
+        # DeepstreamHandler.connections[self.request.path].discard(self)
+        for path, handlers in DeepstreamHandler.connections.iteritems():
+            if self in handlers:
+                DeepstreamHandler.connections[path].remove(self)
+
         if self._close_future:
             self._close_future.set_result(True)
 
@@ -69,8 +81,9 @@ def _create_server(port, path):
 
 
 def after_step(context, step):
-    context.io_loop.call_later(0.03, context.io_loop.stop)
-    context.io_loop.start()
+    if "the server sends the message" in step.name:
+        context.io_loop.call_later(0.03, context.io_loop.stop)
+        context.io_loop.start()
 
 
 def before_scenario(context, scenario):

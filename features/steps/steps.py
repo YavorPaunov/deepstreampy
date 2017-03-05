@@ -85,9 +85,13 @@ def server_sends_message(context, message):
 
     if (context.client and
             context.client._connection._url == SECOND_SERVER_URL):
-        next(iter(context.connections('/deepstream2'))).write_message(message)
+        future = next(iter(
+            context.connections('/deepstream2'))).write_message(message)
+        yield future
     else:
-        next(iter(context.connections('/deepstream'))).write_message(message)
+        future = next(iter(
+            context.connections('/deepstream'))).write_message(message)
+        yield future
 
 
 @then(u'the server has {num_connections} active connections')
@@ -197,14 +201,16 @@ def client_error(context, event, message):
 
 @given(u'the client creates a record named "{record_name}"')
 @when(u'the client creates a record named "{record_name}"')
+@testing.gen_test
 def create_record(context, record_name):
-    record = context.client.record.get_record(record_name)
+    record = yield context.client.record.get_record(record_name)
     context.records[record_name] = record
 
 
 @then(u'the client record "{record_name}" data is {data}')
+@testing.gen_test
 def record_data(context, record_name, data):
-    record = context.client.record.get_record(record_name)
+    record = yield context.client.record.get_record(record_name)
     actual_data = record.get()
     data = json.loads(data)
     assert actual_data == data, "Actual data is {0}, not {1}".format(
@@ -212,34 +218,39 @@ def record_data(context, record_name, data):
 
 
 @when(u'the client sets the record "{record_name}" "{path}" to "{value}"')
+@testing.gen_test
 def set_record_path(context, record_name, value, path):
-    record = context.client.record.get_record(record_name)
+    record = yield context.client.record.get_record(record_name)
     record.set(value, path, context.write_acknowledge)
 
 
 @when(u'the client sets the record "{record_name}" to {value}')
+@testing.gen_test
 def set_record(context, record_name, value):
-    record = context.client.record.get_record(record_name)
+    record = yield context.client.record.get_record(record_name)
     record.set(json.loads(value), callback=context.write_acknowledge)
 
 
 @when(u'the client discards the record named "{record_name}"')
+@testing.gen_test
 def discard_record(context, record_name):
-    record = context.client.record.get_record(record_name)
-    record.discard()
+    record = yield context.client.record.get_record(record_name)
+    yield record.discard()
 
 
 @given(u'the client deletes the record named "{record_name}"')
 @when(u'the client deletes the record named "{record_name}"')
+@testing.gen_test
 def delete_record(context, record_name):
-    record = context.client.record.get_record(record_name)
-    record.delete()
+    record = yield context.client.record.get_record(record_name)
+    yield record.delete()
 
 
 @given(u'the client checks if the server has the record "{record_name}"')
+@testing.gen_test
 def record_check_has(context, record_name):
     callback = mock.Mock()
-    context.client.record.has(record_name, callback)
+    yield context.client.record.has(record_name, callback)
     context.has_callbacks[record_name] = callback
 
 
@@ -263,9 +274,10 @@ def step_impl(context, message):
 
 
 @when(u'the client listens to a record matching "{pattern}"')
+@testing.gen_test
 def listen(context, pattern):
     context.listen_callback = mock.Mock()
-    context.client.record.listen(pattern, context.listen_callback)
+    yield context.client.record.listen(pattern, context.listen_callback)
 
 
 @given(u'two seconds later')
@@ -283,8 +295,9 @@ def sleep(context):
 
 
 @when(u'the client unlistens to a record matching "{pattern}"')
+@testing.gen_test
 def unlisten(context, pattern):
-    context.client.record.unlisten(pattern)
+    yield context.client.record.unlisten(pattern)
 
 
 @then(u'the server received the message {message}')
@@ -338,29 +351,33 @@ def client_notified_of_removal(context, match):
 
 
 @when(u'the client subscribes to the entire record "{record_name}" changes')
+@testing.gen_test
 def client_subscribes(context, record_name):
-    record = context.client.record.get_record(record_name)
+    record = yield context.client.record.get_record(record_name)
     context.subscribe_callback = mock.Mock()
     record.subscribe(context.subscribe_callback)
 
 
 @given(u'the client unsubscribes to the entire record "{record_name}" changes')
+@testing.gen_test
 def client_unsubscribes(context, record_name):
-    record = context.client.record.get_record(record_name)
+    record = yield context.client.record.get_record(record_name)
     record.unsubscribe(context.subscribe_callback)
     context.subscribe_callback.reset_mock()
 
 
 @when(u'the client subscribes to "{path}" for the record "{record_name}"')
+@testing.gen_test
 def record_path_subscribe(context, path, record_name):
-    record = context.client.record.get_record(record_name)
+    record = yield context.client.record.get_record(record_name)
     context.subscribe_callback = mock.Mock()
     record.subscribe(context.subscribe_callback, path)
 
 
 @given(u'the client unsubscribes to "{path}" for the record "{record_name}"')
+@testing.gen_test
 def record_unsubscribe(context, path, record_name):
-    record = context.client.record.get_record(record_name)
+    record = yield context.client.record.get_record(record_name)
     record.unsubscribe(context.subscribe_callback, path)
     context.subscribe_callback.reset_mock()
 
@@ -408,25 +425,27 @@ def record_snapshot(context, record_name, data):
 
 @given(u'the client subscribes to an event named "{event_name}"')
 @when(u'the client subscribes to an event named "{event_name}"')
+@testing.gen_test
 def event_subscribe(context, event_name):
     context.event_callbacks[event_name] = mock.Mock()
-    context.client.event.subscribe(event_name,
-                                   context.event_callbacks[event_name])
+    yield context.client.event.subscribe(
+        event_name, context.event_callbacks[event_name])
 
 
 @given(u'the client unsubscribes from an event named "{event_name}"')
 @when(u'the client unsubscribes from an event named "{event_name}"')
+@testing.gen_test
 def event_unsubscribe(context, event_name):
-    context.client.event.unsubscribe(event_name,
-                                     context.event_callbacks[event_name])
+    yield context.client.event.unsubscribe(
+        event_name, context.event_callbacks[event_name])
     del context.event_callbacks[event_name]
 
 
 @when(u'the client listens to events matching "{event_pattern}"')
+@testing.gen_test
 def event_listen(context, event_pattern):
     context.listen_callback = mock.Mock()
-    context.client.event.listen(event_pattern,
-                                context.listen_callback)
+    yield context.client.event.listen(event_pattern, context.listen_callback)
 
 
 @when(u'the client publishes an event named "{event_name}" with data '
@@ -436,8 +455,9 @@ def event_publish(context, event_name, event_data):
 
 
 @when(u'the client unlistens to events matching "{event_pattern}"')
+@testing.gen_test
 def event_unlisten(context, event_pattern):
-    context.client.event.unlisten(event_pattern)
+    yield context.client.event.unlisten(event_pattern)
 
 
 @then(u'the client will be notified of new event match "{event_match}"')
@@ -465,9 +485,10 @@ def server_no_message(context):
 
 
 @when(u'the client provides a RPC called "{rpc_name}"')
+@testing.gen_test
 def rpc_provide(context, rpc_name):
     context.rpc_provide_callback = mock.Mock()
-    context.client.rpc.provide(rpc_name, context.rpc_provide_callback)
+    yield context.client.rpc.provide(rpc_name, context.rpc_provide_callback)
 
 
 @then(u'the client recieves a request for a RPC called "{rpc_name}" with data '
@@ -481,11 +502,12 @@ def rpc_request(context, rpc_name, data):
 
 
 @when(u'the client responds to the RPC "{rpc_name}" with data "{data}"')
+@testing.gen_test
 def rpc_respond_data(context, rpc_name, data):
     if not context.rpc_response:
         context.rpc_response = context.rpc_provide_callback.call_args[0][1]
 
-    context.rpc_response.send(data)
+    yield context.rpc_response.send(data)
 
     msg_future = next(iter(
         context.connections('/deepstream'))).message_future()
@@ -498,33 +520,29 @@ def rpc_respond_error(context, rpc_name, error):
     if not context.rpc_response:
         context.rpc_response = context.rpc_provide_callback.call_args[0][1]
 
-    context.rpc_response.error(error)
-
-    msg_future = next(iter(
-        context.connections('/deepstream'))).message_future()
-    yield msg_future
+    yield context.rpc_response.error(error)
 
 
 @when(u'the client rejects the RPC "{rpc_name}"')
+@testing.gen_test
 def rpc_reject(context, rpc_name):
     if not context.rpc_response:
         context.rpc_response = context.rpc_provide_callback.call_args[0][1]
 
-    context.rpc_response.reject()
-    msg_future = next(iter(
-        context.connections('/deepstream'))).message_future()
-    yield msg_future
+    yield context.rpc_response.reject()
 
 
 @when(u'the client stops providing a RPC called "{rpc_name}"')
+@testing.gen_test
 def rpc_unprovide(context, rpc_name):
-    context.client.rpc.unprovide(rpc_name)
+    yield context.client.rpc.unprovide(rpc_name)
 
 
 @when(u'the client requests RPC "{rpc_name}" with data "{data}"')
+@testing.gen_test
 def rpc_client_request(context, rpc_name, data):
     context.rpc_request_callback = mock.Mock()
-    context.client.rpc.make(rpc_name, data, context.rpc_request_callback)
+    yield context.client.rpc.make(rpc_name, data, context.rpc_request_callback)
 
 
 @then(u'the client recieves a successful RPC callback for "{rpc_name}" with '
@@ -545,15 +563,19 @@ def rpc_callback_error(context, rpc_name, error):
 
 
 @given(u'the client subscribes to presence events')
+@testing.gen_test
 def presence_subscribe(context):
     context.presence_callback = mock.Mock()
-    context.client.presence.subscribe(context.presence_callback)
+    yield context.client.presence.subscribe(context.presence_callback)
 
 
 @given(u'the client queries for connected clients')
+@testing.gen_test
 def presence_query(context):
     context.presence_query_callback = mock.Mock()
-    context.client.presence.get_all(context.presence_query_callback)
+    future = context.client.presence.get_all(context.presence_query_callback)
+    if not context.client._connection._websocket_handler.stream.closed():
+        yield future
 
 
 @then(u'the client is notified that no clients are connected')
@@ -583,8 +605,9 @@ def presence_notify_log_out(context, client_name):
 
 @when(u'the client unsubscribes to presence events')
 @given(u'the client unsubscribes to presence events')
+@testing.gen_test
 def presence_unsubscribe(context):
-    context.client.presence.unsubscribe(context.presence_callback)
+    yield context.client.presence.unsubscribe(context.presence_callback)
     context.presence_callback = mock.Mock()
 
 
@@ -595,8 +618,9 @@ def record_write_acknowledge(context, record_name):
 
 @then(u'the client is notified that the record "{record_name}" was written '
       'without error')
+@testing.gen_test
 def record_write_acknowledge_success(context, record_name):
-    if context.connection.state != connection_state.OPEN:
+    if context.client._connection.state != connection_state.OPEN:
         yield context.client.connect()
     context.write_acknowledge.assert_called_with(None)
 
