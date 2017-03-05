@@ -15,33 +15,23 @@ class DeepstreamHandler(websocket.WebSocketHandler):
     callbacks = defaultdict(mock.Mock)
 
     def open(self):
+        self._path = self.request.path
         self._messages = []
-        DeepstreamHandler.connections[self.request.path].add(self)
+        DeepstreamHandler.connections[self._path].add(self)
         self._msg_future = None
         self._close_future = None
 
     def on_message(self, message):
-        for path, handlers in DeepstreamHandler.connections.iteritems():
-            if self in handlers:
-                break
-
-        DeepstreamHandler.received_messages[path].append(message)
+        DeepstreamHandler.received_messages[self._path].append(message)
         if self._msg_future:
             self._msg_future.set_result(message)
 
     def write_message(self, message):
-        for path, handlers in DeepstreamHandler.connections.iteritems():
-            if self in handlers:
-                break
-
-        DeepstreamHandler.sent_messages[path].append(message)
+        DeepstreamHandler.sent_messages[self._path].append(message)
         return super(DeepstreamHandler, self).write_message(message)
 
     def on_close(self):
-        # DeepstreamHandler.connections[self.request.path].discard(self)
-        for path, handlers in DeepstreamHandler.connections.iteritems():
-            if self in handlers:
-                DeepstreamHandler.connections[path].remove(self)
+        DeepstreamHandler.connections[self._path].remove(self)
 
         if self._close_future:
             self._close_future.set_result(True)
