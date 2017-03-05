@@ -7,14 +7,13 @@ from deepstreampy.constants import event as event_constants
 from deepstreampy.constants import connection_state
 from deepstreampy.message import message_parser, message_builder
 from deepstreampy.utils import ResubscribeNotifier, SingleNotifier, Listener
-from deepstreampy.utils import Undefined, num_types, str_types
+from deepstreampy.utils import num_types, str_types
 from deepstreampy.constants import merge_strategies
 from deepstreampy import jsonpath
 
 from pyee import EventEmitter
 from tornado import gen, concurrent
 
-import re
 import json
 from functools import partial
 from copy import deepcopy
@@ -363,7 +362,7 @@ class Record(EventEmitter, object):
 
     def _get_path(self, path):
         if path not in self._paths:
-            self._paths[path] = JSONPath(self, path)
+            self._paths[path] = jsonpath.get(self._data, path, True)
 
         return self._paths[path]
 
@@ -847,75 +846,3 @@ class RecordHandler(EventEmitter, object):
             del self._records[record_name]
         elif record_name in self._lists:
             del self._lists[record_name]
-
-
-class JSONPath(object):
-
-    SPLIT_REG_EXP = r"[\.\[\]]"
-
-    def __init__(self, record, path):
-        self._record = record
-        self._path = str(path)
-        self._tokens = list()
-
-        self._tokenize()
-
-    def get_value(self):
-        node = self._record._data
-
-        for token in self._tokens:
-            try:
-                node = node[token]
-            except (IndexError, KeyError):
-                return None
-
-        return node
-
-    def set_value(self, value):
-        node = self._record._data
-        for i, token in enumerate(self._tokens[:-1]):
-            try:
-                node = node[token]
-            except (KeyError, IndexError):
-                if (i + 1 < len(self._tokens) and
-                        isinstance(self._tokens[i+1], int)):
-                    if isinstance(node, list):
-                        _pad_list(node, token + 1, None)
-
-                    node[token] = []
-                else:
-                    if isinstance(node, list):
-                        _pad_list(node, token + 1, None)
-
-                    node[token] = {}
-
-                node = node[token]
-
-        last_token = self._tokens[-1]
-
-        if value is Undefined:
-            del node[last_token]
-            return
-        if isinstance(node, list):
-            _pad_list(node, len(node) + 1, None)
-
-        node[last_token] = value
-
-    def _tokenize(self):
-        parts = re.split(JSONPath.SPLIT_REG_EXP, self._path)
-
-        for part in parts:
-            if len(part) == 0:
-                continue
-            try:
-                self._tokens.append(int(part))
-            except ValueError:
-                if part == '*':
-                    self._tokens.append(True)
-                else:
-                    self._tokens.append(part)
-
-
-def _pad_list(_list, index, value):
-    if len(_list) < index - 1:
-        _list.extend([value] * (index - len(_list)))

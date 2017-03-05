@@ -113,5 +113,27 @@ class ConnectionTest(testing.AsyncTestCase):
         self.assertEquals(conn.state,
                           constants.connection_state.ERROR)
 
+    def test_too_many_auth_attempts(self):
+        conn = connection.Connection(self.client, URL)
+        connect_future = mock.Mock()
+        connect_future_config = {'exception.return_value': None,
+                                 'result.return_value': self.handler}
+        connect_future.configure_mock(**connect_future_config)
+        connect_future.exception.return_value = None
+        connect_future.get_result.return_value = self.handler
+
+        conn._on_open(connect_future)
+        self.handler.stream.closed = mock.Mock(return_value=False)
+        conn._on_data('C{0}A{1}'.format(chr(31), chr(30)))
+        self.handler.write_message.assert_not_called()
+
+        conn.authenticate({'user': 'Anon'})
+        conn._on_data('A{0}E{1}'
+                      .format(chr(31), chr(30)))
+        conn.authenticate({'user': 'Anon'})
+        conn._on_data('A{0}E{0}TOO_MANY_AUTH_ATTEMPTS{1}'
+                      .format(chr(31), chr(30)))
+        self.assertTrue(conn._too_many_auth_attempts)
+
 if __name__ == '__main__':
     testing.unittest.main()

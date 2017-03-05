@@ -1,7 +1,7 @@
 from __future__ import absolute_import, division, print_function, with_statement
 from __future__ import unicode_literals
 
-from deepstreampy.utils import Undefined
+from deepstreampy.utils import Undefined, num_types
 from copy import deepcopy
 import re
 
@@ -66,6 +66,9 @@ def set(data, path, value, deep_copy):
 def _tokenize(path):
     if not path:
         return ()
+
+    if isinstance(path, num_types):
+        return [path]
 
     parts = re.split(SPLIT_REG_EXP, path)
     tokens = []

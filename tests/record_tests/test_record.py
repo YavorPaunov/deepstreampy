@@ -65,6 +65,24 @@ class RecordTest(testing.AsyncTestCase):
     def test_invalid(self):
         self.assertRaises(ValueError, self.record.set, Undefined)
 
+    def test_send_update_with_callback(self):
+        callback = mock.Mock()
+        self.record.set({'firstname': 'John'}, callback=callback)
+        expected = ("R{0}U{0}testRecord{0}1{0}{{\"firstname\":\"John\"}}{0}"
+                    "{{\"writeSuccess\":true}}{1}"
+                    .format(chr(31), chr(30)).encode())
+        self.handler.write_message.assert_called_with(expected)
+        self.assertEqual(self.record.get(), {'firstname': 'John'})
+        self.assertEquals(self.record.version, 1)
+
+    def test_send_patch_message_with_callback(self):
+        callback = mock.Mock()
+        self.record.set('Smith', 'lastname', callback)
+        expected = ("R{0}P{0}testRecord{0}1{0}lastname{0}SSmith{0}"
+                    "{{\"writeSuccess\":true}}{1}"
+                    .format(chr(31), chr(30)).encode())
+        self.handler.write_message.assert_called_with(expected)
+
     def tearDown(self):
         super(RecordTest, self).tearDown()
         self.handler.mock_reset()
