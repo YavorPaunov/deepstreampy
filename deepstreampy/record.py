@@ -39,7 +39,6 @@ class Record(EventEmitter, object):
         self._is_destroyed = False
         self._data = {}
         self.version = None
-        self._paths = {}
         self._old_value = None
         self._old_path_values = None
         self._queued_method_calls = list()
@@ -53,12 +52,17 @@ class Record(EventEmitter, object):
 
         self._resubscribe_notifier = ResubscribeNotifier(client,
                                                          self._send_read)
-        # TODO: Use options.record_read_ack_timeout
+        record_read_ack_timeout = options.get("recordReadAckTimeout", 15)
         self._read_ack_timeout = client.io_loop.call_later(
-            1, partial(self._on_timeout, event_constants.ACK_TIMEOUT))
+            record_read_ack_timeout,
+            partial(self._on_timeout, event_constants.ACK_TIMEOUT))
 
+        record_read_timeout = options.get("recordReadTimeout", 15)
         self._read_timeout = client.io_loop.call_later(
-            1, partial(self._on_timeout, event_constants.RESPONSE_TIMEOUT))
+            record_read_timeout,
+            partial(self._on_timeout, event_constants.RESPONSE_TIMEOUT))
+
+        self._record_delete_timeout = options.get("recordDeleteTimeout", 15)
 
         self._delete_ack_timeout = None
         self._discard_timeout = None
@@ -109,7 +113,7 @@ class Record(EventEmitter, object):
 
         if trigger_now and self._is_ready:
             if path:
-                callback(self._get_path(path).get_value())
+                callback(jsonpath.get(self._data, path, True))
             else:
                 callback(self._data)
 
@@ -153,7 +157,8 @@ class Record(EventEmitter, object):
         def ready_callback(record):
             self.emit('destroyPending')
             self._delete_ack_timeout = self._client.io_loop.call_later(
-                1, partial(self._on_timeout, event_constants.DELETE_TIMEOUT))
+                self._record_delete_timeout,
+                partial(self._on_timeout, event_constants.DELETE_TIMEOUT))
 
             send_future = self._connection.send_message(
                 topic_constants.RECORD, action_constants.DELETE, [self.name])
@@ -232,7 +237,7 @@ class Record(EventEmitter, object):
             self.version = int(remote_version)
 
             old_value = deepcopy(self._data)
-            new_value = jsonpath.set(old_value, None, data, False)
+            new_value = jsonpath.set(old_value, None, data, True)
             if old_value == new_value:
                 return
 
@@ -286,7 +291,7 @@ class Record(EventEmitter, object):
         self._begin_change()
         self.version = version
         if message['action'] == action_constants.PATCH:
-            self._get_path(message['data'][2]).set_value(data)
+            jsonpath.set(self._data, message['data'][2], data, False)
         else:
             self._data = data
 
@@ -361,10 +366,7 @@ class Record(EventEmitter, object):
             topic_constants.RECORD, action_constants.CREATEORREAD, [self.name])
 
     def _get_path(self, path):
-        if path not in self._paths:
-            self._paths[path] = jsonpath.get(self._data, path, True)
-
-        return self._paths[path]
+        return jsonpath.get(self._data, path, True)
 
     def _begin_change(self):
         if not self._emitter._events:
@@ -382,7 +384,8 @@ class Record(EventEmitter, object):
 
         for path in paths:
             if path != ALL_EVENT:
-                self._old_path_values[path] = self._get_path(path).get_value()
+                self._old_path_values[path] = jsonpath.get(
+                    self._data, path, True)
 
     def _complete_change(self):
         if (self._emitter.listeners(ALL_EVENT) and
@@ -395,7 +398,7 @@ class Record(EventEmitter, object):
             return
 
         for path in self._old_path_values:
-            current_value = self._get_path(path).get_value()
+            current_value = jsonpath.get(self._data, path, True)
 
             if current_value != self._old_path_values[path]:
                 self._emitter.emit(path, current_value)
@@ -652,17 +655,19 @@ class RecordHandler(EventEmitter, object):
         self._listeners = {}
         self._destroy_emitter = EventEmitter()
 
+        record_read_timeout = options.get("recordReadTimeout", 15)
+
         self._has_registry = SingleNotifier(client,
                                             connection,
                                             topic_constants.RECORD,
                                             action_constants.HAS,
-                                            5)  # TODO: Use options
+                                            record_read_timeout)
 
         self._snapshot_registry = SingleNotifier(client,
                                                  connection,
                                                  topic_constants.RECORD,
                                                  action_constants.SNAPSHOT,
-                                                 5)  # TODO: Use options
+                                                 record_read_timeout)
 
     @gen.coroutine
     def get_record(self, name, record_options=None):
@@ -775,7 +780,6 @@ class RecordHandler(EventEmitter, object):
             return
 
         if action in (action_constants.ACK, action_constants.ERROR):
-            # TODO: Start from here
             name = data[1]
             if data[0] in (action_constants.DELETE,
                            action_constants.UNSUBSCRIBE):

@@ -21,7 +21,8 @@ class PresenceHandlerTest(testing.AsyncTestCase):
 
     def setUp(self):
         super(PresenceHandlerTest, self).setUp()
-        self.client = client.Client(URL)
+        options = {"subscriptionTimeout": 0.005}
+        self.client = client.Client(URL, **options)
         self.handler = mock.Mock()
         self.handler.stream.closed = mock.Mock(return_value=False)
         self.client._connection._state = connection_state.OPEN

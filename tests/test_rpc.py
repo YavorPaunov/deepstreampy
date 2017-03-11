@@ -22,7 +22,9 @@ class RPCHandlerTest(testing.AsyncTestCase):
 
     def setUp(self):
         super(RPCHandlerTest, self).setUp()
-        options = {'rpcResponseTimeout': 0.01, 'rpcAckTimeout': 0.01}
+        options = {'rpcResponseTimeout': 0.01,
+                   'rpcAckTimeout': 0.01,
+                   'subscriptionTimeout': 0.01}
         self.client = client.Client(URL, **options)
         self.handler = mock.Mock()
         self.handler.stream.closed = mock.Mock(return_value=False)

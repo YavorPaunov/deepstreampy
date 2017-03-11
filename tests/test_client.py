@@ -135,5 +135,55 @@ class ConnectionTest(testing.AsyncTestCase):
                       .format(chr(31), chr(30)))
         self.assertTrue(conn._too_many_auth_attempts)
 
+
+class TestHeartbeat(testing.AsyncTestCase):
+
+    def setUp(self):
+        super(TestHeartbeat, self).setUp()
+        client = mock.Mock()
+        self.connection = connection.Connection(
+            client, "ws://localhost2",
+            heartbeatInterval=0.05)
+        self.connection._io_loop = self.io_loop
+
+        self.handler = mock.Mock()
+        self.handler.stream.closed = mock.Mock(return_value=False)
+        self.handler.close = mock.Mock(side_effect=self.connection._on_close)
+        self._websocket_handler = self.handler
+
+        future = mock.Mock()
+        future.exception = mock.Mock(return_value=None)
+        future.result = mock.Mock(return_value=self.handler)
+
+        exc_future = mock.Mock()
+        exc_future.exception = mock.Mock(return_value=None)
+        exc_future.result = mock.Mock(return_value=self.handler)
+        self.connection.connect = mock.Mock(
+            return_value=future,
+            side_effect=lambda: self.connection._on_open(exc_future))
+        self.connection._on_open(future)
+        self.connection._set_state(
+            constants.connection_state.AWAITING_AUTHENTICATION)
+        self.connection._on_data("C{0}A{1}".format(chr(31), chr(30)))
+
+    def test_ping_pong(self):
+        self.connection._on_data("C{0}PI{1}".format(chr(31), chr(30)))
+        self.handler.write_message.assert_called_with(
+            "C{0}PO{1}".format(chr(31), chr(30)).encode())
+
+    @testing.gen_test
+    def test_miss_one(self):
+        yield testing.gen.sleep(0.075)
+        self.handler.write_message.assert_not_called()
+        self.assertEqual(self.connection.state,
+                         constants.connection_state.AWAITING_AUTHENTICATION)
+
+    @testing.gen_test
+    def test_miss_two(self):
+        yield testing.gen.sleep(3)
+        self.assertEqual(self.connection.state,
+                         constants.connection_state.ERROR)
+
+
 if __name__ == '__main__':
     testing.unittest.main()

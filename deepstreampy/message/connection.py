@@ -18,7 +18,8 @@ class Connection(object):
         self._io_loop = ioloop.IOLoop.current()
 
         self._client = client
-        self._url = url
+        self._original_url = url
+        self._url = self._original_url
         self._websocket_handler = None
 
         self._auth_params = None
@@ -37,7 +38,6 @@ class Connection(object):
         self._current_packet_message_count = 0
         self._send_next_packet_timeout = None
         self._last_heartbeat = None
-        self._heartbeat_interval = options.get('heartbeatInterval', 100)
         self._heartbeat_callback = None
 
         self._challenge_denied = False
@@ -45,6 +45,13 @@ class Connection(object):
 
         self._current_message_reset_timeout = None
         self._state = constants.connection_state.CLOSED
+
+        self._max_reconnect_attempts = options.get('maxReconnectAttempts', 3)
+        self._reconnect_interval_increment = options.get(
+            'reconnectAttemptInterval', 4)
+        self._max_reconnect_interval = options.get(
+            'maxReconnectInterval', 18)
+        self._heartbeat_interval = options.get('heartbeatInterval', 100)
 
     def connect(self, callback=None):
         self._connect_callback = callback
@@ -58,16 +65,15 @@ class Connection(object):
         return connect_future
 
     def _check_heartbeat(self):
-        heartbeat_tolerance = self._heartbeat_interval
+        heartbeat_tolerance = self._heartbeat_interval * 2
         elapsed = time.time() - self._last_heartbeat
-
-        if elapsed > heartbeat_tolerance:
+        if elapsed >= heartbeat_tolerance:
             self._io_loop.remove_timeout(self._heartbeat_callback)
             self._websocket_handler.close()
             self._on_error("Two connections heartbeats missed successively")
-
-        self._heartbeat_callback = self._io_loop.call_later(
-            self._heartbeat_interval, self._check_heartbeat)
+        else:
+            self._heartbeat_callback = self._io_loop.call_later(
+                self._heartbeat_interval, self._check_heartbeat)
 
     def _on_open(self, f):
         exception = f.exception()
@@ -97,7 +103,8 @@ class Connection(object):
         if isinstance(error, str_types):
             msg = error
         elif error.errno in (errno.ECONNRESET, errno.ECONNREFUSED):
-            msg = "Can't connect! Deepstream server unreachable on " + self._url
+            msg = ("Can't connect! Deepstream server unreachable on " +
+                   self._url)
         else:
             msg = str(error)
 
@@ -114,7 +121,8 @@ class Connection(object):
         if self._heartbeat_callback:
             self._io_loop.remove_timeout(self._heartbeat_callback)
         self._deliberate_close = True
-        self._websocket_handler.close()
+        if self._websocket_handler:
+            self._websocket_handler.close()
 
     def authenticate(self, auth_params):
         self._auth_params = auth_params
@@ -293,15 +301,30 @@ class Connection(object):
                 self._client._on_message(parsed_messages[0])
 
     def _try_reconnect(self):
-        # TODO: Use options to set max reconnect attempts
-        if self._reconnection_attempt < 3:
+        if self._reconnect_timeout is not None:
+            return
+
+        if self._reconnection_attempt < self._max_reconnect_attempts:
             self._set_state(constants.connection_state.RECONNECTING)
-            # TODO: Use options to set reconnect attempt interval
-            self._reconnect_timeout = self._io_loop.call_later(
-                3 * self._reconnection_attempt, self.connect)
+
+            interval = min(
+                (self._reconnect_interval_increment *
+                 self._reconnection_attempt),
+                self._max_reconnect_interval)
+
             self._reconnection_attempt += 1
+
+            self._reconnect_timeout = self._io_loop.call_later(
+                interval, self._try_open)
+
         else:
             self._clear_reconnect()
+            self.close()
+
+    def _try_open(self):
+        self._url = self._original_url
+        self.connect()
+        self._reconnect_timeout = None
 
     def _clear_reconnect(self):
         self._io_loop.remove_timeout(self._reconnect_timeout)
@@ -310,6 +333,7 @@ class Connection(object):
 
     def _on_close(self):
         self._io_loop.remove_timeout(self._heartbeat_callback)
+
         if self._redirecting:
             self._redirecting = False
             self.connect()

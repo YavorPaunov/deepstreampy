@@ -27,10 +27,11 @@ class EventHandler(object):
         self._client = client
         self._emitter = EventEmitter()
         self._listener = {}
-        # TODO: Use options to set subscriptionTimeout
+
+        subscription_timeout = options.get("subscriptionTimeout", 15)
         self._ack_timeout_registry = AckTimeoutRegistry(client,
                                                         topic_constants.EVENT,
-                                                        1)
+                                                        subscription_timeout)
         self._resubscribe_notifier = ResubscribeNotifier(client,
                                                          self._resubscribe)
 

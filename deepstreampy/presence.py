@@ -18,8 +18,9 @@ class PresenceHandler(object):
         self._connection = connection
         self._client = client
         self._emitter = EventEmitter()
+        subscription_timeout = options.get("subscriptionTimeout", 15)
         self._ack_timeout_registry = AckTimeoutRegistry(
-            client, topic_constants.PRESENCE, 1)
+            client, topic_constants.PRESENCE, subscription_timeout)
         self._resubscribe_notifier = ResubscribeNotifier(
             client, self._resubscribe)
 

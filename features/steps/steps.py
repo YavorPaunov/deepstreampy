@@ -35,7 +35,12 @@ def second_server_ready(context):
 @given(u'the client is initialised')
 @testing.gen_test
 def client_init(context):
-    context.client = yield connect(FIRST_SERVER_URL, rpcResponseTimeout=0.2)
+    context.client = yield connect(FIRST_SERVER_URL,
+                                   subscriptionTimeout=0.1,
+                                   recordReadAckTimeout=0.2,
+                                   recordReadTimeout=0.26,
+                                   recordDeleteTimeout=0.1,
+                                   rpcResponseTimeout=0.2)
     context.client.get_uid = mock.Mock(return_value='<UID>')
 
     def error_callback(message, event, t):
@@ -50,7 +55,13 @@ def client_init(context):
 @given(u'the client is initialised with a small heartbeat interval')
 @testing.gen_test
 def client_init_small_heartbeat(context):
-    context.client = yield connect(FIRST_SERVER_URL, heartbeatInterval=1)
+    context.client = yield connect(FIRST_SERVER_URL,
+                                   subscriptionTimeout=0.1,
+                                   recordReadAckTimeout=0.2,
+                                   recordReadTimeout=0.26,
+                                   recordDeleteTimeout=0.1,
+                                   rpcResponseTimeout=0.2,
+                                   heartbeatInterval=0.5)
     context.client.get_uid = mock.Mock(return_value='<UID>')
 
     def error_callback(message, event, t):
@@ -85,22 +96,15 @@ def server_sends_message(context, message):
 
     if (context.client and
             context.client._connection._url == SECOND_SERVER_URL):
-        future = next(iter(
+        yield next(iter(
             context.connections('/deepstream2'))).write_message(message)
-        yield future
     else:
-        future = next(iter(
+        yield next(iter(
             context.connections('/deepstream'))).write_message(message)
-        yield future
 
 
 @then(u'the server has {num_connections} active connections')
 def server_num_connections(context, num_connections):
-    connections = context.connections('/deepstream')
-
-    if connections and int(num_connections) == 0:
-        next(iter(connections)).close_future()
-
     connections_count = context.num_connections('/deepstream')
     assert connections_count == int(num_connections), (str(connections_count) +
                                                        " active connections.")
@@ -290,7 +294,7 @@ def two_seconds_later(context):
 @when(u'some time passes')
 @given(u'some time passes')
 def sleep(context):
-    context.io_loop.call_later(5, context.io_loop.stop)
+    context.io_loop.call_later(0.2, context.io_loop.stop)
     context.io_loop.start()
 
 

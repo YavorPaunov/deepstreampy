@@ -82,8 +82,8 @@ class Listener(object):
         self._connection = connection
         self._send_future = None
 
-        # TODO: Use subscribe timeout from options
-        self._ack_timeout = connection._io_loop.call_later(1,
+        subscription_timeout = options.get("subscriptionTimeout", 15)
+        self._ack_timeout = connection._io_loop.call_later(subscription_timeout,
                                                            self._on_ack_timeout)
         self._resubscribe_notifier = ResubscribeNotifier(client,
                                                          self._send_listen)
