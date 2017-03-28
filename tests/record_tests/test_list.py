@@ -51,7 +51,7 @@ class ListTest(testing.AsyncTestCase):
         self.assertTrue(self.list.is_empty)
 
     def test_receive_response(self):
-        self.record_handler._handle(
+        self.record_handler.handle(
             {'topic': 'R', 'action': 'R',
              'data': ['someList', 1, '["entryA", "entryB"]']})
         self.assertEqual(self.list.get_entries(), ['entryA', 'entryB'])
@@ -60,7 +60,7 @@ class ListTest(testing.AsyncTestCase):
         self.assertFalse(self.list.is_empty)
 
     def test_append(self):
-        self.record_handler._handle(
+        self.record_handler.handle(
             {'topic': 'R', 'action': 'R',
              'data': ['someList', 1, '["entryA", "entryB"]']})
         self.list.add_entry('entryC')
@@ -71,7 +71,7 @@ class ListTest(testing.AsyncTestCase):
             msg('R|U|someList|2|["entryA","entryB","entryC"]+'))
 
     def test_remove(self):
-        self.record_handler._handle(
+        self.record_handler.handle(
            {'topic': 'R', 'action': 'R',
             'data': ['someList', 1, '["entryA", "entryB"]']})
         self.assertEqual(self.list.get_entries(), ['entryA', 'entryB'])
@@ -82,7 +82,7 @@ class ListTest(testing.AsyncTestCase):
             msg('R|U|someList|2|["entryA"]+'))
 
     def test_insert(self):
-        self.record_handler._handle(
+        self.record_handler.handle(
             {'topic': 'R', 'action': 'R',
              'data': ['someList', 1, '["entryA", "entryB"]']})
         self.list.add_entry('entryC', 1)
@@ -93,7 +93,7 @@ class ListTest(testing.AsyncTestCase):
             msg('R|U|someList|2|["entryA","entryC","entryB"]+'))
 
     def test_remove_at_index(self):
-        self.record_handler._handle(
+        self.record_handler.handle(
             {'topic': 'R', 'action': 'R',
              'data': ['someList', 1, '["entryA", "entryB", "entryC"]']})
         self.list.remove_at(1)
@@ -102,7 +102,7 @@ class ListTest(testing.AsyncTestCase):
             msg('R|U|someList|2|["entryA","entryC"]+'))
 
     def test_set_entire_list(self):
-        self.record_handler._handle(
+        self.record_handler.handle(
             {'topic': 'R', 'action': 'R',
              'data': ['someList', 1, '["entryA", "entryB", "entryC"]']})
         self.list.set_entries(['x', 'y'])
@@ -110,10 +110,10 @@ class ListTest(testing.AsyncTestCase):
         self.change_callback.assert_called_with(['x', 'y'])
 
     def test_server_update(self):
-        self.record_handler._handle(
+        self.record_handler.handle(
            {'topic': 'R', 'action': 'R',
             'data': ['someList', 1, '["entryA", "entryB"]']})
-        self.record_handler._handle({'topic': 'R',
+        self.record_handler.handle({'topic': 'R',
                                      'action': 'R',
                                      'data': ['someList', 2, '["x","y"]']})
         self.change_callback.assert_called_with(['x', 'y'])
@@ -121,7 +121,7 @@ class ListTest(testing.AsyncTestCase):
         self.assertEqual(self.list.get_entries(), ['x', 'y'])
 
     def test_empty_list(self):
-        self.record_handler._handle(
+        self.record_handler.handle(
            {'topic': 'R', 'action': 'R', 'data': ['someList', 1, '[]']})
         self.assertEqual(self.list.get_entries(), [])
         self.assertTrue(self.list.is_empty)

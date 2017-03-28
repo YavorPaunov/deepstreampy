@@ -30,6 +30,7 @@ class Record(EventEmitter, object):
         super(Record, self).__init__()
         self.name = name
         self.usages = 0
+        self.has_provider = None
         self._record_options = record_options
         self._connection = connection
         self._client = client
@@ -767,13 +768,13 @@ class RecordHandler(EventEmitter, object):
 
         return future
 
-    def _handle(self, message):
+    def handle(self, message):
         action = message['action']
         data = message['data']
         if (action == action_constants.ERROR and
-            data[0] not in (event_constants.VERSION_EXISTS,
-                            action_constants.SNAPSHOT,
-                            action_constants.HAS)):
+                data[0] not in (event_constants.VERSION_EXISTS,
+                                action_constants.SNAPSHOT,
+                                action_constants.HAS)):
             message['processedError'] = True
             self._client._on_error(topic_constants.RECORD,
                                    message['data'][0], message['data'][1])
@@ -819,12 +820,12 @@ class RecordHandler(EventEmitter, object):
             self._has_registry.receive(name, None, record_exists)
         listener = self._listeners.get(name, None)
         if (action == action_constants.ACK and
-            data[0] == action_constants.UNLISTEN and
+                data[0] == action_constants.UNLISTEN and
                 listener and listener.destroy_pending):
-                processed = True
-                listener.destroy()
-                del self._listeners[name]
-                del listener
+            processed = True
+            listener.destroy()
+            del self._listeners[name]
+            del listener
         elif listener:
             processed = True
             listener._on_message(message)

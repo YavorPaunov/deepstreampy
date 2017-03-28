@@ -50,7 +50,7 @@ class PresenceHandlerTest(testing.AsyncTestCase):
         error_callback.reset_mock()
 
         # receive ack message for subscribe
-        self.client.presence._handle({'topic': 'U',
+        self.client.presence.handle({'topic': 'U',
                                       'action': 'A',
                                       'data': ['S']})
         self.wait()
@@ -58,14 +58,14 @@ class PresenceHandlerTest(testing.AsyncTestCase):
         error_callback.reset_mock()
 
         # Client logs in
-        self.client.presence._handle({'topic': 'U',
+        self.client.presence.handle({'topic': 'U',
                                       'action': 'PNJ',
                                       'data': ['Homer']})
         callback.assert_called_with('Homer', True)
         self.wait()
 
         # Client logs out
-        self.client.presence._handle({'topic': 'U',
+        self.client.presence.handle({'topic': 'U',
                                       'action': 'PNL',
                                       'data': ['Marge']})
         callback.assert_called_with('Marge', False)
@@ -76,7 +76,7 @@ class PresenceHandlerTest(testing.AsyncTestCase):
         self.handler.write_message.assert_called_with(msg('U|Q|Q+'))
 
         # Receive data for query
-        self.client.presence._handle({'topic': 'U',
+        self.client.presence.handle({'topic': 'U',
                                       'action': 'Q',
                                       'data': ['Marge', 'Homer', 'Bart']})
         callback.assert_called_with(['Marge', 'Homer', 'Bart'])
@@ -93,7 +93,7 @@ class PresenceHandlerTest(testing.AsyncTestCase):
         error_callback.reset_mock()
 
         # receive ack for unsubscrube
-        self.client.presence._handle({'topic': 'U',
+        self.client.presence.handle({'topic': 'U',
                                       'action': 'A',
                                       'data': ['US']})
         self.wait()
@@ -103,16 +103,16 @@ class PresenceHandlerTest(testing.AsyncTestCase):
         error_callback.reset_mock()
 
         # not notified of future actions
-        self.client.presence._handle({'topic': 'U',
+        self.client.presence.handle({'topic': 'U',
                                       'action': 'PNJ',
                                       'data': ['Homer']})
         callback.assert_not_called()
 
-        self.client.presence._handle({'topic': 'U',
+        self.client.presence.handle({'topic': 'U',
                                       'action': 'PNL',
                                       'data': ['Homer']})
         callback.assert_not_called()
-        self.client.presence._handle({'topic': 'U',
+        self.client.presence.handle({'topic': 'U',
                                       'action': 'Q',
                                       'data': ['Marge', 'Homer', 'Bart']})
         callback.assert_not_called()

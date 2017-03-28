@@ -70,6 +70,16 @@ def _create_server(port, path):
     return server
 
 
+def before_all(context):
+    context.uid_patcher = mock.patch("deepstreampy.utils.get_uid",
+                                     return_value="<UID>")
+    context.uid_patcher.start()
+
+
+def after_all(context):
+    context.uid_patcher.stop()
+
+
 def after_step(context, step):
     if "the server sends the message" in step.name:
         context.io_loop.call_later(0.03, context.io_loop.stop)

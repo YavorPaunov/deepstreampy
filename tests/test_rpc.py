@@ -35,6 +35,10 @@ class RPCHandlerTest(testing.AsyncTestCase):
         self.rpc_calls = 0
         self.client_errors = []
         self.client.on('error', self._error_callback)
+        get_uid_patcher = mock.patch(
+            'deepstreampy.utils.get_uid', return_value='1')
+        get_uid_patcher.start()
+        self.addCleanup(get_uid_patcher.stop)
 
     def _error_callback(self, *args):
         self.client_errors.append(args)
@@ -51,13 +55,13 @@ class RPCHandlerTest(testing.AsyncTestCase):
                 0.5, functools.partial(response.send, result))
             self.connection._io_loop.call_later(0.6, self.stop)
 
-    def test_handle_rpc_providers(self):
+    def testhandle_rpc_providers(self):
         # RPCHandler is created
-        rpc_handler = self.client.rpc
+        rpchandler = self.client.rpc
         self.assertTrue(isinstance(self.client.rpc, rpc.RPCHandler))
 
         # Register a provider for addTwo RPC
-        rpc_handler.provide('addTwo', self._add_two_callback)
+        rpchandler.provide('addTwo', self._add_two_callback)
         self.handler.write_message.assert_called_once_with(msg('P|S|addTwo+'))
         self.assertEquals(self.rpc_calls, 0)
 
@@ -69,19 +73,19 @@ class RPCHandlerTest(testing.AsyncTestCase):
         self.assertTrue(expected_error in self.client_errors)
 
         # Reply to a sync RPC request
-        rpc_handler._handle({'topic': 'RPC',
-                             'action': 'REQ',
-                             'data': ['addTwo',
-                                      '678',
-                                      'O{"numA":2,"numB":3,"sync":true}']})
+        rpchandler.handle({'topic': 'RPC',
+                           'action': 'REQ',
+                           'data': ['addTwo',
+                                    '678',
+                                    'O{"numA":2,"numB":3,"sync":true}']})
         self.wait()
         self.handler.write_message.assert_called_with(
             msg('P|RES|addTwo|678|N5+'))
 
         # Reply to an async RPC request
-        rpc_handler._handle({'topic': 'RPC',
-                             'action': 'REQ',
-                             'data': ['addTwo', '123', 'O{"numA":7,"numB":3}']})
+        rpchandler.handle({'topic': 'RPC',
+                           'action': 'REQ',
+                           'data': ['addTwo', '123', 'O{"numA":7,"numB":3}']})
 
         self.connection._io_loop.call_later(0.1, self.stop)
         self.wait()
@@ -93,15 +97,15 @@ class RPCHandlerTest(testing.AsyncTestCase):
             msg('P|RES|addTwo|123|N10+'))
 
         # Send rejection if no provider exists
-        rpc_handler._handle({'topic': 'RPC',
-                             'action': 'REQ',
-                             'data': ['doesNotExist', '432',
-                                      'O{"numA":7,"numB":3}']})
+        rpchandler.handle({'topic': 'RPC',
+                           'action': 'REQ',
+                           'data': ['doesNotExist', '432',
+                                    'O{"numA":7,"numB":3}']})
         self.handler.write_message.assert_called_with(
             msg('P|REJ|doesNotExist|432+'))
 
         # Deregister provider for the addTwo RPC
-        rpc_handler.unprovide('addTwo')
+        rpchandler.unprovide('addTwo')
         self.handler.write_message.assert_called_with(msg('P|US|addTwo+'))
 
         # Timeout emitted after no ACK message received for the unprovide
@@ -114,7 +118,7 @@ class RPCHandlerTest(testing.AsyncTestCase):
         self.assertTrue(expected_error in self.client_errors)
 
         # Reject call to deregistered provider
-        rpc_handler._handle({
+        rpchandler.handle({
             'topc': 'RPC',
             'action': 'REQ',
             'data': ['addTwo', '434', 'O{"numA":2,"numB":7, "sync": true}']})
@@ -123,21 +127,19 @@ class RPCHandlerTest(testing.AsyncTestCase):
 
     def test_make_rpcs(self):
         # RPCHandler is created
-        rpc_handler = self.client.rpc
+        rpchandler = self.client.rpc
         self.assertTrue(isinstance(self.client.rpc, rpc.RPCHandler))
-
-        self.client.get_uid = mock.Mock(return_value='1')
 
         # Make a successful RPC for addTwo
         rpc_callback = mock.Mock()
-        rpc_handler.make('addTwo', {'numA': 3, 'numB': 8}, rpc_callback)
+        rpchandler.make('addTwo', {'numA': 3, 'numB': 8}, rpc_callback)
         self.assertTrue(self.handler.write_message.call_args[0][0] in
                         (msg('P|REQ|addTwo|1|O{"numA":3,"numB":8}+'),
                          msg('P|REQ|addTwo|1|O{"numB":8,"numA":3}+')))
 
-        rpc_handler._handle({'topic': 'RPC',
-                             'action': 'RES',
-                             'data': ['addTwo', u'1', 'N11']})
+        rpchandler.handle({'topic': 'RPC',
+                           'action': 'RES',
+                           'data': ['addTwo', u'1', 'N11']})
 
         rpc_callback.assert_called_with(None, 11)
 
@@ -146,15 +148,15 @@ class RPCHandlerTest(testing.AsyncTestCase):
                         (msg('P|REQ|addTwo|1|O{"numA":3,"numB":8}+'),
                          msg('P|REQ|addTwo|1|O{"numB":8,"numA":3}+')))
 
-        rpc_handler.make('addTwo', {'numA': 3, 'numB': 8}, rpc_callback)
-        rpc_handler._handle({'topic': 'RPC',
-                             'action': 'E',
-                             'data': ['NO_PROVIDER', 'addTwo', '1']})
+        rpchandler.make('addTwo', {'numA': 3, 'numB': 8}, rpc_callback)
+        rpchandler.handle({'topic': 'RPC',
+                           'action': 'E',
+                           'data': ['NO_PROVIDER', 'addTwo', '1']})
         rpc_callback.assert_called_with('NO_PROVIDER', None)
         rpc_callback.reset_mock()
 
         # Make RPC for addTwo but receive no ack in time
-        rpc_handler.make('addTwo', {'numA': 3, 'numB': 8}, rpc_callback)
+        rpchandler.make('addTwo', {'numA': 3, 'numB': 8}, rpc_callback)
         self.assertTrue(self.handler.write_message.call_args[0][0] in
                         (msg('P|REQ|addTwo|1|O{"numA":3,"numB":8}+'),
                          msg('P|REQ|addTwo|1|O{"numB":8,"numA":3}+')))
@@ -178,6 +180,10 @@ class RPCResponseTest(testing.AsyncTestCase):
         self.connection._io_loop = self.io_loop
         self.client_errors = []
         self.client.on('error', self._error_callback)
+        get_uid_patcher = mock.patch(
+            'deepstreampy.utils.get_uid', return_value='1')
+        get_uid_patcher.start()
+        self.addCleanup(get_uid_patcher.stop)
 
     def _error_callback(self, *args):
         self.client_errors.append(args)

@@ -250,6 +250,10 @@ class Connection(object):
         """
         return self._state
 
+    @property
+    def io_loop(self):
+        return self._io_loop
+
     def send_message(self, topic, action, data):
         message = message_builder.get_message(topic, action, data)
         return self.send(message)

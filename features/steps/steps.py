@@ -41,7 +41,6 @@ def client_init(context):
                                    recordReadTimeout=0.26,
                                    recordDeleteTimeout=0.1,
                                    rpcResponseTimeout=0.2)
-    context.client.get_uid = mock.Mock(return_value='<UID>')
 
     def error_callback(message, event, t):
         context.client_errors.append(dict(message=message,
@@ -62,7 +61,6 @@ def client_init_small_heartbeat(context):
                                    recordDeleteTimeout=0.1,
                                    rpcResponseTimeout=0.2,
                                    heartbeatInterval=0.5)
-    context.client.get_uid = mock.Mock(return_value='<UID>')
 
     def error_callback(message, event, t):
         context.client_errors.append(dict(message=message,

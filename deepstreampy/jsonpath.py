@@ -1,9 +1,9 @@
 from __future__ import absolute_import, division, print_function, with_statement
 from __future__ import unicode_literals
 
-from deepstreampy.utils import Undefined, num_types
-from copy import deepcopy
 import re
+from copy import deepcopy
+from deepstreampy.utils import Undefined, num_types
 
 SPLIT_REG_EXP = r"[\.\[\]]"
 

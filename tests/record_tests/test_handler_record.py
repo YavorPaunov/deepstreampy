@@ -41,7 +41,7 @@ class TestRecordRead(testing.AsyncTestCase):
         self.record_A.on('discard', self.on_discard)
 
     def _initialise(self):
-        self.record_handler._handle({
+        self.record_handler.handle({
             'topic': 'R',
             'action': 'R',
             'data': ['record_A', 0, '{}']})
@@ -73,7 +73,7 @@ class TestRecordRead(testing.AsyncTestCase):
     def test_discard_ack(self):
         self._initialise()
         self.record_A.discard()
-        self.record_handler._handle({'topic': 'R', 'action': 'A',
+        self.record_handler.handle({'topic': 'R', 'action': 'A',
                                      'data': ['US', 'record_A']})
         self.assertEquals(self.on_discard.call_count, 1)
         self.assertTrue(self.record_A.is_destroyed)
@@ -86,13 +86,13 @@ class TestRecordRead(testing.AsyncTestCase):
 class TestRecordDeleted(testing.AsyncTestCase):
 
     def _create_empty(self):
-        self.record_handler._handle({
+        self.record_handler.handle({
             'topic': 'R',
             'action': 'R',
             'data': ['record_A', 0, '{}']})
 
     def _delete(self):
-        self.record_handler._handle({
+        self.record_handler.handle({
             'topic': 'R',
             'action': 'A',
             'data': ['D', 'record_A']})

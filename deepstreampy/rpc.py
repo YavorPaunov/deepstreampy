@@ -8,8 +8,7 @@ from deepstreampy.constants import actions
 from deepstreampy.constants import event as event_constants
 from deepstreampy.message import message_builder
 from deepstreampy.message import message_parser
-from deepstreampy.utils import AckTimeoutRegistry
-from deepstreampy.utils import ResubscribeNotifier
+from deepstreampy import utils
 
 from tornado import concurrent
 
@@ -162,9 +161,9 @@ class RPCHandler(object):
         self._provide_ack_timeouts = {}
 
         subscription_timeout = options.get("subscriptionTimeout", 15)
-        self._ack_timeout_registry = AckTimeoutRegistry(
+        self._ack_timeout_registry = utils.AckTimeoutRegistry(
             client, topic_constants.RPC, subscription_timeout)
-        self._resubscribe_notifier = ResubscribeNotifier(
+        self._resubscribe_notifier = utils.ResubscribeNotifier(
             client, self._reprovide)
 
     def provide(self, name, callback):
@@ -200,7 +199,7 @@ class RPCHandler(object):
         if not name:
             raise ValueError("invalid argument name")
 
-        uid = self._client.get_uid()
+        uid = utils.get_uid()
         typed_data = message_builder.typed(data)
         self._rpcs[uid] = RPC(callback, self._client, **self._options)
 
@@ -233,7 +232,7 @@ class RPCHandler(object):
                                           actions.REJECTION,
                                           [name, correlation_id])
 
-    def _handle(self, message):
+    def handle(self, message):
         action = message['action']
         data = message['data']
         if action == actions.REQUEST:

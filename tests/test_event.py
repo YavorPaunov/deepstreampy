@@ -43,17 +43,17 @@ class EventsTest(unittest.TestCase):
         # self.error_callback.assert_called_with(
         #    'E', 'ACK_TIMEOUT',  'No ACK message received in time for myEvent')
         self.event_callback.assert_not_called()
-        self.client.event._handle({'topic': 'EVENT',
+        self.client.event.handle({'topic': 'EVENT',
                                    'action': 'EVT',
                                    'data': ['myEvent', 'N23']})
         self.event_callback.assert_called_with(23)
 
-        self.client.event._handle({'topic': 'EVENT',
+        self.client.event.handle({'topic': 'EVENT',
                                    'action': 'EVT',
                                    'data': ['myEvent']})
         self.event_callback.assert_called_with()
 
-        self.client.event._handle({'topic': 'EVENT',
+        self.client.event.handle({'topic': 'EVENT',
                                    'action': 'EVT',
                                    'data': ['myEvent', 'notTypes']})
         self.error_callback.assert_called_with('UNKNOWN_TYPE (notTypes)',
@@ -64,7 +64,7 @@ class EventsTest(unittest.TestCase):
         self.client.event.emit('myEvent', 11)
         self.event_callback.assert_not_called()
 
-        self.client.event._handle({'topic': 'EVENT',
+        self.client.event.handle({'topic': 'EVENT',
                                    'action': 'L',
                                    'data': ['myEvent']})
         self.error_callback.assert_called_with('myEvent',
@@ -76,7 +76,7 @@ class EventsTest(unittest.TestCase):
             response['accept']()
 
         self.client.event.listen('a/.*', listen_callback)
-        self.client.event._handle({'topic': 'E',
+        self.client.event.handle({'topic': 'E',
                                    'action': 'SP',
                                    'data': ['a/.*', 'a/1']})
 
@@ -87,7 +87,7 @@ class EventsTest(unittest.TestCase):
             response['reject']()
 
         self.client.event.listen('b/.*', listen_callback)
-        self.client.event._handle({'topic': 'E',
+        self.client.event.handle({'topic': 'E',
                                    'action': 'SP',
                                    'data': ['b/.*', 'b/1']})
 
@@ -98,12 +98,12 @@ class EventsTest(unittest.TestCase):
             if is_subscribed:
                 response['accept']()
 
-                self.client.event._handle({'topic': 'E',
+                self.client.event.handle({'topic': 'E',
                                            'action': 'SR',
                                            'data': ['b/.*', 'b/2']})
 
         self.client.event.listen('b/.*', listen_callback)
-        self.client.event._handle({'topic': 'E',
+        self.client.event.handle({'topic': 'E',
                                    'action': 'SP',
                                    'data': ['b/.*', 'b/2']})
 
@@ -115,7 +115,7 @@ class EventsTest(unittest.TestCase):
             response['accept']()
 
         self.client.event.listen('a/.*', listen_callback)
-        self.client.event._handle({'topic': 'E',
+        self.client.event.handle({'topic': 'E',
                                    'action': 'SP',
                                    'data': ['a/.*', 'a/1']})
 
@@ -125,11 +125,11 @@ class EventsTest(unittest.TestCase):
         self.handler.write_message.assert_called_with(msg('E|UL|a/.*+'))
 
         self.handler.reset_mock()
-        self.client.event._handle({'topic': 'E',
+        self.client.event.handle({'topic': 'E',
                                    'action': 'A',
                                    'data': ['UL', 'a/.*']})
         self.client.on('error', self.error_callback)
-        self.client.event._handle({'topic': 'E',
+        self.client.event.handle({'topic': 'E',
                                    'action': 'SP',
                                    'data': ['a/.*', 'a/1']})
         self.error_callback.assert_called_with('a/.*',

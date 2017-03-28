@@ -7,13 +7,9 @@ from deepstreampy.record import RecordHandler
 from deepstreampy.event import EventHandler
 from deepstreampy.rpc import RPCHandler
 from deepstreampy.presence import PresenceHandler
-from deepstreampy.utils import itoa
 
 from pyee import EventEmitter
 from tornado import gen
-
-import time
-import random
 
 
 @gen.coroutine
@@ -55,20 +51,17 @@ class Client(EventEmitter):
         self._record = RecordHandler(self._connection, self, **options)
         self._message_callbacks = dict()
 
-        def not_implemented_callback(topic):
-            raise NotImplementedError("Topic " + topic + " not yet implemented")
+        self._message_callbacks[
+            constants.topic.PRESENCE] = self._presence.handle
 
         self._message_callbacks[
-            constants.topic.PRESENCE] = self._presence._handle
+            constants.topic.EVENT] = self._event.handle
 
         self._message_callbacks[
-            constants.topic.EVENT] = self._event._handle
+            constants.topic.RPC] = self._rpc.handle
 
         self._message_callbacks[
-            constants.topic.RPC] = self._rpc._handle
-
-        self._message_callbacks[
-            constants.topic.RECORD] = self._record._handle
+            constants.topic.RECORD] = self._record.handle
 
         self._message_callbacks[constants.topic.ERROR] = self._on_error
 
@@ -105,11 +98,6 @@ class Client(EventEmitter):
         """
         return self._connection.authenticate(auth_params)
 
-    def get_uid(self):
-        timestamp = itoa(int(time.time() * 1000), 36)
-        random_str = itoa(int(random.random() * 10000000000000000), 36)
-        return "{0}-{1}".format(timestamp, random_str)
-
     def _on_message(self, message):
         if message['topic'] in self._message_callbacks:
             self._message_callbacks[message['topic']](message)
@@ -132,7 +120,7 @@ class Client(EventEmitter):
                     constants.connection_state.AWAITING_AUTHENTICATION):
                 error_msg = ('Your message timed out because you\'re not '
                              'authenticated. Have you called login()?')
-                self._connection._io_loop.call_later(
+                self._connection.io_loop.call_later(
                     0.1, lambda: self._on_error(event.NOT_AUTHENTICATED,
                                                 constants.topic.ERROR,
                                                 error_msg))
@@ -170,4 +158,4 @@ class Client(EventEmitter):
 
     @property
     def io_loop(self):
-        return self._connection._io_loop
+        return self._connection.io_loop

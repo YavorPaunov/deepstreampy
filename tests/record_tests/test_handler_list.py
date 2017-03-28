@@ -54,14 +54,14 @@ class TestHandlerList(testing.AsyncTestCase):
 
     def test_initialize_list(self):
         self.assertFalse(self.listA.is_ready)
-        self.record_handler._handle({
+        self.record_handler.handle({
             'topic': 'R',
             'action': 'R',
             'data': ['list_A', 0, '{}']})
         self.assertTrue(self.listA.is_ready)
 
     def test_discard_list(self):
-        self.record_handler._handle({
+        self.record_handler.handle({
             'topic': 'R',
             'action': 'R',
             'data': ['list_A', 0, '{}']})
@@ -72,7 +72,7 @@ class TestHandlerList(testing.AsyncTestCase):
         self.handler.write_message.assert_called_with(
             "R{0}US{0}list_A{1}".format(chr(31), chr(30)).encode())
 
-        self.record_handler._handle({
+        self.record_handler.handle({
             'topic': 'R',
             'action': 'A',
             'data': ['US', 'list_A']

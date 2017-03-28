@@ -32,7 +32,7 @@ class PresenceHandler(object):
                 [action_constants.QUERY])
         else:
             future = concurrent.Future()
-            future.set_result()
+            future.set_result(None)
 
         self._emitter.once(action_constants.QUERY, callback)
         return future
@@ -46,7 +46,7 @@ class PresenceHandler(object):
                                                    [action_constants.SUBSCRIBE])
         else:
             future = concurrent.Future()
-            future.set_result()
+            future.set_result(None)
 
         self._emitter.on(topic_constants.PRESENCE, callback)
         return future
@@ -63,11 +63,11 @@ class PresenceHandler(object):
                 [action_constants.UNSUBSCRIBE])
         else:
             future = concurrent.Future()
-            future.set_result()
+            future.set_result(None)
 
         return future
 
-    def _handle(self, message):
+    def handle(self, message):
         action = message['action']
         data = message['data']
 

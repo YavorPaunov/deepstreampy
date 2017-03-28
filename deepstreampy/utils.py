@@ -10,6 +10,8 @@ from tornado import concurrent
 
 from functools import partial
 import sys
+import time
+import random
 
 num_types = ((int, long, float, complex) if sys.version_info < (3,) else
              (int, float, complex))
@@ -252,5 +254,11 @@ def itoa(num, radix):
     result = ""
     while num > 0:
         result = "0123456789abcdefghijklmnopqrstuvwxyz"[num % radix] + result
-        num /= radix
+        num //= radix
     return result
+
+
+def get_uid():
+    timestamp = itoa(int(time.time() * 1000), 36)
+    random_str = itoa(int(random.random() * 10000000000000000), 36)
+    return "{0}-{1}".format(timestamp, random_str)

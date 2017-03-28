@@ -44,7 +44,7 @@ class ListChangeTest(testing.AsyncTestCase):
         record = self.io_loop.run_sync(
             partial(self.record_handler.get_record, 'someList'))
         self.list = List(self.record_handler, record, {})
-        self.record_handler._handle({'topic': 'R', 'action': 'R',
+        self.record_handler.handle({'topic': 'R', 'action': 'R',
                                      'data': ['someList', 1, '{}']})
 
     def _create_callback(self, event_name):
@@ -78,7 +78,7 @@ class ListChangeTest(testing.AsyncTestCase):
 
     def test_notify_on_append_external(self):
         callback = self._create_callback(ENTRY_ADDED_EVENT)
-        self.record_handler._handle(
+        self.record_handler.handle(
             {'topic': 'R',
              'action': 'U',
              'data': ['someList', 3, '["a","b","c","d","e","x"]']})

@@ -165,7 +165,7 @@ class EventHandler(object):
 
         return listener.send_future
 
-    def _handle(self, message):
+    def handle(self, message):
         action = message['action']
         data = message['data']
 
@@ -192,9 +192,8 @@ class EventHandler(object):
         elif name in self._listener:
             self._listener[name]._on_message(message)
             return
-        elif action == actions.SUBSCRIPTION_FOR_PATTERN_REMOVED:
-            return
-        elif action == actions.SUBSCRIPTION_HAS_PROVIDER:
+        elif action in (actions.SUBSCRIPTION_FOR_PATTERN_REMOVED,
+                        actions.SUBSCRIPTION_HAS_PROVIDER):
             return
 
         if action == actions.ACK:
