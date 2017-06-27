@@ -77,7 +77,7 @@ class AnonymousRecordTest(testing.AsyncTestCase):
              "action": "R",
              "data": ["recordA", 1, '{"firstname":"Yavor"}']})
 
-        self.ready_callback.assert_called_once()
+        self.assertEquals(self.ready_callback.call_count, 1)
         self.firstname_callback.assert_called_once_with("Yavor")
         self.general_callback.assert_called_once_with({"firstname": "Yavor"})
 
@@ -90,7 +90,7 @@ class AnonymousRecordTest(testing.AsyncTestCase):
              "data": [
                  "recordB", 1, '{"firstname":"John", "lastname":"Smith"}']})
 
-        self.ready_callback.assert_called_once()
+        self.assertEquals(self.ready_callback.call_count, 1)
         self.firstname_callback.assert_called_with("Yavor")
         self.general_callback.assert_called_with({"firstname": "Yavor"})
 
