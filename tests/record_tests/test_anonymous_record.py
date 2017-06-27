@@ -45,7 +45,7 @@ class AnonymousRecordTest(testing.AsyncTestCase):
     @testing.gen_test
     def test_anonymous_record(self):
         # Creates the anonymous record
-        anon_record = AnonymousRecord(self.record_handler)
+        anon_record = yield self.record_handler.get_anonymous_record()
         self.assertIsNone(anon_record.get())
         self.assertIsNone(anon_record.name)
 

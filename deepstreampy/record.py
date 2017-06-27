@@ -710,7 +710,9 @@ class RecordHandler(EventEmitter, object):
         raise gen.Return(_list)
 
     def get_anonymous_record(self):
-        raise NotImplementedError()
+        future = concurrent.Future()
+        future.set_result(AnonymousRecord(self))
+        return future
 
     def listen(self, pattern, callback):
         if pattern in self._listeners:
