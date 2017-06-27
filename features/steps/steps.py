@@ -102,7 +102,7 @@ def server_sends_message(context, message):
 
 
 @then(u'the server has {num_connections} active connections')
-def server_num_connections(cak, producing aontext, num_connections):
+def server_num_connections(context, num_connections):
     connections_count = context.num_connections('/deepstream')
     assert connections_count == int(num_connections), (str(connections_count) +
                                                        " active connections.")
@@ -627,6 +627,7 @@ def record_write_acknowledge_success(context, record_name):
     if context.client._connection.state != connection_state.OPEN:
         yield context.client.connect()
 
+    print("Calls:", context.write_acknowledge.mock_calls)
     context.write_acknowledge.assert_called_with(None)
 
 
