@@ -9,6 +9,8 @@ from pyee import EventEmitter
 from tornado import concurrent
 
 from functools import partial
+from collections import namedtuple
+
 import sys
 import time
 import random
@@ -70,6 +72,8 @@ class SingleNotifier(object):
             self._connection.send_message(
                 self._topic, self._action, [self._requests[request]])
 
+CallbackResponse = namedtuple('CallbackResponse', 'accept reject')
+
 
 class Listener(object):
 
@@ -78,7 +82,6 @@ class Listener(object):
         self._type = listener_type
         self._callback = callback
         self._pattern = pattern
-        self._callback = callback
         self._options = options
         self._client = client
         self._connection = connection
@@ -114,8 +117,8 @@ class Listener(object):
             self._type, action_constants.LISTEN_REJECT, [self._pattern, name])
 
     def _create_callback_response(self, message):
-        return {'accept': partial(self.accept, message['data'][1]),
-                'reject': partial(self.reject, message['data'][1])}
+        return CallbackResponse(accept=partial(self.accept, message['data'][1]),
+                                reject=partial(self.reject, message['data'][1]))
 
     def _on_message(self, message):
         action = message['action']

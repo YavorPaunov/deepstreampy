@@ -40,22 +40,20 @@ class EventsTest(unittest.TestCase):
         self.handler.write_message.assert_called_with(msg('E|S|myEvent+'))
 
         self.client.on('error', self.error_callback)
-        # self.error_callback.assert_called_with(
-        #    'E', 'ACK_TIMEOUT',  'No ACK message received in time for myEvent')
         self.event_callback.assert_not_called()
         self.client.event.handle({'topic': 'EVENT',
-                                   'action': 'EVT',
-                                   'data': ['myEvent', 'N23']})
+                                  'action': 'EVT',
+                                  'data': ['myEvent', 'N23']})
         self.event_callback.assert_called_with(23)
 
         self.client.event.handle({'topic': 'EVENT',
-                                   'action': 'EVT',
-                                   'data': ['myEvent']})
+                                  'action': 'EVT',
+                                  'data': ['myEvent']})
         self.event_callback.assert_called_with()
 
         self.client.event.handle({'topic': 'EVENT',
-                                   'action': 'EVT',
-                                   'data': ['myEvent', 'notTypes']})
+                                  'action': 'EVT',
+                                  'data': ['myEvent', 'notTypes']})
         self.error_callback.assert_called_with('UNKNOWN_TYPE (notTypes)',
                                                'MESSAGE_PARSE_ERROR',
                                                'X')
@@ -65,59 +63,59 @@ class EventsTest(unittest.TestCase):
         self.event_callback.assert_not_called()
 
         self.client.event.handle({'topic': 'EVENT',
-                                   'action': 'L',
-                                   'data': ['myEvent']})
+                                  'action': 'L',
+                                  'data': ['myEvent']})
         self.error_callback.assert_called_with('myEvent',
                                                'UNSOLICITED_MESSAGE',
                                                'E')
 
     def test_accept(self):
         def listen_callback(data, is_subscribed, response):
-            response['accept']()
+            response.accept()
 
         self.client.event.listen('a/.*', listen_callback)
         self.client.event.handle({'topic': 'E',
-                                   'action': 'SP',
-                                   'data': ['a/.*', 'a/1']})
+                                  'action': 'SP',
+                                  'data': ['a/.*', 'a/1']})
 
         self.handler.write_message.assert_called_with(msg('E|LA|a/.*|a/1+'))
 
     def test_reject(self):
         def listen_callback(data, is_subscribed, response):
-            response['reject']()
+            response.reject()
 
         self.client.event.listen('b/.*', listen_callback)
         self.client.event.handle({'topic': 'E',
-                                   'action': 'SP',
-                                   'data': ['b/.*', 'b/1']})
+                                  'action': 'SP',
+                                  'data': ['b/.*', 'b/1']})
 
         self.handler.write_message.assert_called_with(msg('E|LR|b/.*|b/1+'))
 
     def test_accept_and_discard(self):
         def listen_callback(data, is_subscribed, response=None):
             if is_subscribed:
-                response['accept']()
+                response.accept()
 
                 self.client.event.handle({'topic': 'E',
-                                           'action': 'SR',
-                                           'data': ['b/.*', 'b/2']})
+                                          'action': 'SR',
+                                          'data': ['b/.*', 'b/2']})
 
         self.client.event.listen('b/.*', listen_callback)
         self.client.event.handle({'topic': 'E',
-                                   'action': 'SP',
-                                   'data': ['b/.*', 'b/2']})
+                                  'action': 'SP',
+                                  'data': ['b/.*', 'b/2']})
 
         self.handler.write_message.assert_called_with(msg('E|LA|b/.*|b/2+'))
 
     def test_accept_unlisten(self):
 
         def listen_callback(data, is_subscribed, response):
-            response['accept']()
+            response.accept()
 
         self.client.event.listen('a/.*', listen_callback)
         self.client.event.handle({'topic': 'E',
-                                   'action': 'SP',
-                                   'data': ['a/.*', 'a/1']})
+                                  'action': 'SP',
+                                  'data': ['a/.*', 'a/1']})
 
         self.handler.write_message.assert_called_with(msg('E|LA|a/.*|a/1+'))
 
@@ -126,12 +124,12 @@ class EventsTest(unittest.TestCase):
 
         self.handler.reset_mock()
         self.client.event.handle({'topic': 'E',
-                                   'action': 'A',
-                                   'data': ['UL', 'a/.*']})
+                                  'action': 'A',
+                                  'data': ['UL', 'a/.*']})
         self.client.on('error', self.error_callback)
         self.client.event.handle({'topic': 'E',
-                                   'action': 'SP',
-                                   'data': ['a/.*', 'a/1']})
+                                  'action': 'SP',
+                                  'data': ['a/.*', 'a/1']})
         self.error_callback.assert_called_with('a/.*',
                                                'UNSOLICITED_MESSAGE',
                                                'E')
@@ -141,3 +139,12 @@ class EventsTest(unittest.TestCase):
         self.error_callback.assert_called_with('a/.*',
                                                'NOT_LISTENING',
                                                'X')
+
+    def test_existing_listener(self):
+        self.client.on('error', self.error_callback)
+
+        def listen_callback(data, is_subscribed, response):
+            response.accept()
+
+        self.client.event.listen('b/.*', listen_callback)
+        self.client.event.listen('b/.*', listen_callback)

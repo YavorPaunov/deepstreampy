@@ -9,6 +9,7 @@ from deepstreampy.message import connection
 from deepstreampy import constants
 
 from tornado import testing
+import unittest
 
 import sys
 import errno
@@ -23,7 +24,7 @@ URL = "ws://localhost:7777/deepstream"
 test_server_exceptions = []
 
 
-class ConnectionTest(testing.AsyncTestCase):
+class ConnectionTest(unittest.TestCase):
 
     def setUp(self):
         super(ConnectionTest, self).setUp()
@@ -47,7 +48,7 @@ class ConnectionTest(testing.AsyncTestCase):
     def test_connects(self):
         conn = connection.Connection(self.client, URL)
         assert conn.state == constants.connection_state.CLOSED
-        self.assertEquals(self._get_connection_state_changes(), 0)
+        self.assertEqual(self._get_connection_state_changes(), 0)
         connect_future = mock.Mock()
         connect_future_config = {'exception.return_value': None,
                                  'result.return_value': self.handler}
@@ -55,30 +56,31 @@ class ConnectionTest(testing.AsyncTestCase):
         connect_future.exception.return_value = None
         connect_future.get_result.return_value = self.handler
 
+        conn.connect()
         conn._on_open(connect_future)
         self.handler.stream.closed = mock.Mock(return_value=False)
         self.assertTrue(conn._websocket_handler is self.handler)
-        self.assertEquals(conn.state,
-                          constants.connection_state.AWAITING_CONNECTION)
-        self.assertEquals(self._get_connection_state_changes(), 1)
+        self.assertEqual(conn.state,
+                         constants.connection_state.AWAITING_CONNECTION)
+        self.assertEqual(self._get_connection_state_changes(), 1)
         conn._on_data('C{0}A{1}'.format(chr(31), chr(30)))
-        self.assertEquals(conn.state,
-                          constants.connection_state.AWAITING_AUTHENTICATION)
+        self.assertEqual(conn.state,
+                         constants.connection_state.AWAITING_AUTHENTICATION)
         self.handler.write_message.assert_not_called()
 
         conn.authenticate({'user': 'Anon'})
-        self.assertEquals(conn.state,
-                          constants.connection_state.AUTHENTICATING)
+        self.assertEqual(conn.state,
+                         constants.connection_state.AUTHENTICATING)
 
-        self.assertEquals(self._get_last_sent_message(),
-                          "A{0}REQ{0}{{\"user\":\"Anon\"}}{1}".format(
+        self.assertEqual(self._get_last_sent_message(),
+                         "A{0}REQ{0}{{\"user\":\"Anon\"}}{1}".format(
                               chr(31), chr(30)).encode())
-        self.assertEquals(self._get_connection_state_changes(), 3)
+        self.assertEqual(self._get_connection_state_changes(), 3)
 
         conn._on_data('A{0}A{1}'.format(chr(31), chr(30)))
-        self.assertEquals(conn.state,
-                          constants.connection_state.OPEN)
-        self.assertEquals(self._get_connection_state_changes(), 4)
+        self.assertEqual(conn.state,
+                         constants.connection_state.OPEN)
+        self.assertEqual(self._get_connection_state_changes(), 4)
 
         conn.send_message('R', 'S', ['test1'])
         self.handler.write_message.assert_called_with(
@@ -87,14 +89,14 @@ class ConnectionTest(testing.AsyncTestCase):
         conn.close()
         conn._on_close()
 
-        self.assertEquals(conn.state,
-                          constants.connection_state.CLOSED)
-        self.assertEquals(self._get_connection_state_changes(), 5)
+        self.assertEqual(conn.state,
+                         constants.connection_state.CLOSED)
+        self.assertEqual(self._get_connection_state_changes(), 5)
 
     def test_connect_error(self):
         conn = connection.Connection(self.client, URL)
         assert conn.state == constants.connection_state.CLOSED
-        self.assertEquals(self._get_connection_state_changes(), 0)
+        self.assertEqual(self._get_connection_state_changes(), 0)
         connect_future = mock.Mock()
         connect_future_config = {'exception.return_value': None,
                                  'result.return_value': self.handler}
@@ -104,14 +106,14 @@ class ConnectionTest(testing.AsyncTestCase):
         connect_future.get_result.return_value = self.handler
 
         conn._on_open(connect_future)
-        self.assertEquals(conn.state,
-                          constants.connection_state.RECONNECTING)
+        self.assertEqual(conn.state,
+                         constants.connection_state.RECONNECTING)
         self.assertTrue(conn._reconnect_timeout is not None)
         conn._on_open(connect_future)
         conn._on_open(connect_future)
         conn._on_open(connect_future)
-        self.assertEquals(conn.state,
-                          constants.connection_state.ERROR)
+        self.assertEqual(conn.state,
+                         constants.connection_state.ERROR)
 
     def test_too_many_auth_attempts(self):
         conn = connection.Connection(self.client, URL)

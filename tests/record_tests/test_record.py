@@ -62,6 +62,15 @@ class RecordTest(testing.AsyncTestCase):
         self.record.set(Undefined, 'lastname')
         self.assertEqual(self.record.get(), {'firstname': 'John'})
 
+    def test_delete(self):
+        self.record.delete()
+        expected = "R{0}D{0}testRecord{1}".format(chr(31), chr(30)).encode()
+        self.handler.write_message.assert_called_with(expected)
+        message = {'topic': 'R', 'action': 'A', 'data': ['D', 'testRecord']}
+        self.record._on_message(message)
+        self.assertTrue(self.record.is_destroyed)
+        self.assertFalse(self.record.is_ready)
+
     def test_invalid(self):
         self.assertRaises(ValueError, self.record.set, Undefined)
 

@@ -204,6 +204,7 @@ class EventHandler(object):
             if data[0] == event_constants.MESSAGE_DENIED:
                 self._ack_timeout_registry.remove(message['data'][1],
                                                   message['data'][2])
+
             elif data[0] == event_constants.NOT_SUBSCRIBED:
                 self._ack_timeout_registry.remove(message['data'][1],
                                                   actions.UNSUBSCRIBE)

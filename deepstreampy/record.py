@@ -30,12 +30,12 @@ class Record(EventEmitter, object):
         super(Record, self).__init__()
         self.name = name
         self.usages = 0
-        self.has_provider = None
-        self._record_options = record_options
         self._connection = connection
         self._client = client
         self._options = options
 
+        self._has_provider = False
+        self._record_options = record_options
         self._is_ready = False
         self._is_destroyed = False
         self._data = {}
@@ -214,7 +214,7 @@ class Record(EventEmitter, object):
         elif action == action_constants.SUBSCRIPTION_HAS_PROVIDER:
             has_provider = message_parser.convert_typed(message['data'][1],
                                                         self._client)
-            self.has_provider = has_provider
+            self._has_provider = has_provider
             self.emit('hasProviderChanged', has_provider)
 
     def _recover_record(self, remote_version, remote_data, message):
@@ -237,9 +237,18 @@ class Record(EventEmitter, object):
             old_version = self.version
             self.version = int(remote_version)
 
-            old_value = deepcopy(self._data)
+            old_value = self._data
+
             new_value = jsonpath.set(old_value, None, data, True)
-            if old_value == new_value:
+
+            if data == remote_data:
+                self._apply_change(data)
+
+                callback = self._write_callbacks.get(self.version, None)
+                if callback:
+                    callback(None)
+                    del self._write_callbacks[remote_version]
+
                 return
 
             config = message['data'][4] if len(message['data']) >= 5 else None
@@ -438,6 +447,10 @@ class Record(EventEmitter, object):
         self._connection = None
 
     @property
+    def has_provider(self):
+        return self._has_provider
+
+    @property
     def is_destroyed(self):
         return self._is_destroyed
 
@@ -562,18 +575,6 @@ class List(EventEmitter, object):
         self._before_change()
         self._apply_record_update(message)
         self._after_change()
-
-    def _has_index(self, index):
-        if index is not None:
-            if not isinstance(index, num_types):
-                raise ValueError('Index must be a number')
-
-            if index > len(self.get_entries()) or index < 0:
-                raise ValueError('Index must be within current entries')
-
-            return True
-
-        return False
 
     def _before_change(self):
         self._has_add_listener = len(self.listeners(ENTRY_ADDED_EVENT)) > 0
@@ -771,6 +772,7 @@ class RecordHandler(EventEmitter, object):
     def handle(self, message):
         action = message['action']
         data = message['data']
+
         if (action == action_constants.ERROR and
                 data[0] not in (event_constants.VERSION_EXISTS,
                                 action_constants.SNAPSHOT,
