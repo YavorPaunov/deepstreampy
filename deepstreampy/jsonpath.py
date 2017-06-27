@@ -26,6 +26,7 @@ def get(data, path, deep_copy):
 def set(data, path, value, deep_copy):
     if deep_copy:
         data = deepcopy(data)
+
     node = data
 
     tokens = _tokenize(path)
@@ -69,7 +70,6 @@ def _tokenize(path):
 
     if isinstance(path, num_types):
         return [path]
-
     parts = re.split(SPLIT_REG_EXP, path)
     tokens = []
     for part in parts:

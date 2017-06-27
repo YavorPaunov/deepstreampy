@@ -853,3 +853,74 @@ class RecordHandler(EventEmitter, object):
             del self._records[record_name]
         elif record_name in self._lists:
             del self._lists[record_name]
+
+
+class AnonymousRecord(EventEmitter, object):
+
+    def __init__(self, record_handler):
+        super(AnonymousRecord, self).__init__()
+        self._record_handler = record_handler
+        self._name = None
+        self._record = None
+        self._subscriptions = []
+        self._proxy_method('delete')
+        self._proxy_method('set')
+        self._proxy_method('discard')
+
+    def get(self, path=None):
+        if self._record is None:
+            return None
+
+        return self._record.get(path)
+
+    def subscribe(self, callback, path=None):
+        self._subscriptions.append((callback, path))
+
+        if self._record is not None:
+            self._record.subscribe(callback, path, True)
+
+    def unsubscribe(self, callback, path=None):
+        self._subscriptions.remove((callback, path))
+
+        if self._record is not None:
+            self._record.unsubscribe(callback, path)
+
+    def _on_record_get(record):
+        self._record = record
+
+    @property
+    def name(self):
+        return self._name
+
+    @name.setter
+    @gen.coroutine
+    def name(self, value):
+        self._name = value
+
+        if self._record is not None and not self._record.is_destroyed:
+            for subscription in self._subscriptions:
+                self._record.unsubscribe(*subscription)
+
+            self._record.discard()
+
+        record_future = self._record_handler.get_record(value)
+
+        self._record = yield record_future
+
+        for subscription in self._subscriptions:
+            self._record.subscribe(*subscription, trigger_now=True)
+
+        self._record.when_ready(partial(self.emit, "ready"))
+        self.emit("nameChanged", value)
+
+    def _proxy_method(self, method_name):
+        method = partial(self._call_method_on_record, method_name)
+        setattr(self, method_name, method)
+
+    def _call_method_on_record(self, method_name, *args, **kwargs):
+        if self._record is None:
+            raise AttributeError(
+                "Can't invoke {}. AnonymousRecord not initialised. "
+                "Set `name` first.")
+
+        getattr(self._record, method_name)(*args, **kwargs)

@@ -455,7 +455,6 @@ def record_write_acknowledge_success(context, record_name):
     if context.client._connection.state != connection_state.OPEN:
         yield context.client.connect()
 
-    print("Calls:", context.write_acknowledge.mock_calls)
     context.write_acknowledge.assert_called_with(None)
 
 
