@@ -2,7 +2,7 @@ from __future__ import absolute_import, division, print_function, with_statement
 from __future__ import unicode_literals
 
 from deepstreampy import client
-from deepstreampy.record import RecordHandler, Record, List
+from deepstreampy.record import RecordHandler
 from deepstreampy.record import ENTRY_ADDED_EVENT
 from deepstreampy.record import ENTRY_REMOVED_EVENT
 from deepstreampy.record import ENTRY_MOVED_EVENT
@@ -41,20 +41,19 @@ class ListChangeTest(testing.AsyncTestCase):
         self.record_handler = RecordHandler(
             self.client._connection, self.client)
 
-        record = self.io_loop.run_sync(
-            partial(self.record_handler.get_record, 'someList'))
-        self.list = List(self.record_handler, record, {})
+        self.list = self.io_loop.run_sync(
+            partial(self.record_handler.get_list, 'someList'))
         self.record_handler.handle({'topic': 'R', 'action': 'R',
-                                     'data': ['someList', 1, '{}']})
+                                    'data': ['someList', 1, '{}']})
 
     def _create_callback(self, event_name):
         callback = mock.Mock()
-        self.list.set_entries(['a', 'b', 'c', 'd', 'e'])
+        self.list.set(['a', 'b', 'c', 'd', 'e'])
         self.list.once(event_name, callback)
         return callback
 
     def test_create(self):
-        self.assertEqual(self.list.get_entries(), [])
+        self.assertEqual(self.list.get(), [])
         self.assertTrue(self.list.is_empty)
         callback = mock.Mock()
 
@@ -66,9 +65,9 @@ class ListChangeTest(testing.AsyncTestCase):
 
     def test_no_listeners(self):
         callback = mock.Mock()
-        self.list.set_entries(['a', 'b', 'c', 'd', 'e'])
+        self.list.set(['a', 'b', 'c', 'd', 'e'])
         self.list.subscribe(callback)
-        self.list.set_entries(['a', 'b', 'c', 'd', 'e', 'f'])
+        self.list.set(['a', 'b', 'c', 'd', 'e', 'f'])
         callback.assert_called_once_with(['a', 'b', 'c', 'd', 'e', 'f'])
 
     def test_notify_on_append(self):
@@ -96,9 +95,9 @@ class ListChangeTest(testing.AsyncTestCase):
 
     def test_notify_on_move(self):
         callback = mock.Mock()
-        self.list.set_entries(['a', 'b', 'c', 'd', 'e'])
+        self.list.set(['a', 'b', 'c', 'd', 'e'])
         self.list.on(ENTRY_MOVED_EVENT, callback)
-        self.list.set_entries(['a', 'b', 'e', 'd', 'c'])
+        self.list.set(['a', 'b', 'e', 'd', 'c'])
         self.assertEqual(callback.call_count, 2)
         callback.assert_any_call('e', 2)
         callback.assert_any_call('c', 4)
@@ -115,18 +114,18 @@ class ListChangeTest(testing.AsyncTestCase):
 
     def test_notify_on_remove_second(self):
         callback = mock.Mock()
-        self.list.set_entries(['a', 'b', 'c', 'd', 'c', 'e'])
+        self.list.set(['a', 'b', 'c', 'd', 'c', 'e'])
         self.list.on(ENTRY_REMOVED_EVENT, callback)
-        self.list.set_entries(['a', 'b', 'c', 'd', 'e'])
+        self.list.set(['a', 'b', 'c', 'd', 'e'])
         callback.assert_called_once_with('c', 4)
 
     def test_notify_on_move_remove(self):
         remove_callback = mock.Mock()
         move_callback = mock.Mock()
-        self.list.set_entries(['a', 'b', 'c', 'd', 'e'])
+        self.list.set(['a', 'b', 'c', 'd', 'e'])
         self.list.on(ENTRY_MOVED_EVENT, move_callback)
         self.list.on(ENTRY_REMOVED_EVENT, remove_callback)
-        self.list.set_entries(['a', 'd', 'b', 'c'])
+        self.list.set(['a', 'd', 'b', 'c'])
 
         move_callback.assert_any_call('d', 1)
         move_callback.assert_any_call('b', 2)
@@ -140,11 +139,11 @@ class ListChangeTest(testing.AsyncTestCase):
         move_callback = mock.Mock()
         add_callback = mock.Mock()
 
-        self.list.set_entries(['a', 'b', 'c', 'd', 'e'])
+        self.list.set(['a', 'b', 'c', 'd', 'e'])
         self.list.on(ENTRY_ADDED_EVENT, add_callback)
         self.list.on(ENTRY_MOVED_EVENT, move_callback)
         self.list.on(ENTRY_REMOVED_EVENT, remove_callback)
-        self.list.set_entries(['c', 'b', 'f'])
+        self.list.set(['c', 'b', 'f'])
 
         add_callback.assert_called_once_with('f', 2)
         move_callback.assert_called_once_with('c', 0)

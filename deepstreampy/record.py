@@ -7,7 +7,7 @@ from deepstreampy.constants import event as event_constants
 from deepstreampy.constants import connection_state
 from deepstreampy.message import message_parser, message_builder
 from deepstreampy.utils import ResubscribeNotifier, SingleNotifier, Listener
-from deepstreampy.utils import num_types, str_types
+from deepstreampy.utils import str_types
 from deepstreampy.constants import merge_strategies
 from deepstreampy import jsonpath
 
@@ -39,7 +39,7 @@ class Record(EventEmitter, object):
         self._is_ready = False
         self._is_destroyed = False
         self._data = {}
-        self.version = None
+        self._version = None
         self._old_value = None
         self._old_path_values = None
         self._queued_method_calls = list()
@@ -71,10 +71,31 @@ class Record(EventEmitter, object):
         self._read_future = self._send_read()
 
     def get(self, path=None):
-        # TODO: Use self._options['recordDeepCopy']
-        return jsonpath.get(self._data, path, False)
+        """
+        Returns a copy of either the entire dataset of the record or, if called
+        with a path - the value of that path within the record's dataset.
+
+        Returning a copy rather than the actual value helps to prevent the
+        record getting out of sync due to unintentional changes to its data.
+
+        Args:
+            path (str, optional): a JSON path
+        """
+        deep_copy = self._options.get('recordDeepCopy', False)
+        return jsonpath.get(self._data, path, deep_copy)
 
     def set(self, data, path=None, callback=None):
+        """
+        Sets the value of either the entire dataset or of a specific path within
+        the record and submits the changes to the server.
+
+        If the new data is equal to the current data, nothing happens.
+
+        Args:
+            data: the new value of the data
+            path (str, optional): a JSON path
+            callback (callable)
+        """
         if path is None and not isinstance(data, (dict, list)):
             raise ValueError(
                 "Invalid record data {0}: Record data must be a dict or list.")
@@ -87,8 +108,8 @@ class Record(EventEmitter, object):
             return
 
         old_value = self._data
-        # TODO: Use self._options['recordDeepCopy']
-        new_value = jsonpath.set(old_value, path, data, True)
+        deep_copy = self._options.get('recordDeepCopy', True)
+        new_value = jsonpath.set(old_value, path, data, deep_copy)
 
         if new_value == old_value:
             return
@@ -107,6 +128,18 @@ class Record(EventEmitter, object):
         self._apply_change(new_value)
 
     def subscribe(self, callback, path=None, trigger_now=False):
+        """
+        Subscribe to changes to the record's dataset.
+
+        When called with a path it will only subscribe to updates to that path,
+        rather than the entire record.
+
+        Args:
+            callback (callable)
+            path (str, optional): a JSON path to subscribe for
+            trigger_now (bool): specifies whether the callback should be invoked
+                immediately with the current value
+        """
         if self._check_destroyed('subscribe'):
             return
 
@@ -119,6 +152,13 @@ class Record(EventEmitter, object):
                 callback(self._data)
 
     def unsubscribe(self, callback, path=None):
+        """
+        Remove a subscription that was previously made.
+
+        Args:
+            callback (callable)
+            path (str, optional): the JSON path to unsibscribe for
+        """
         if self._check_destroyed('unsubscribe'):
             return
 
@@ -126,6 +166,10 @@ class Record(EventEmitter, object):
         self._emitter.remove_listener(event, callback)
 
     def discard(self):
+        """
+        Remove all change listeners and notify the server that the client is no
+        longer interested in updates for this record.
+        """
         future = concurrent.Future()
 
         if self._check_destroyed('discard'):
@@ -150,6 +194,9 @@ class Record(EventEmitter, object):
         return future
 
     def delete(self):
+        """
+        Delete the record on the server.
+        """
         future = concurrent.Future()
 
         if self._check_destroyed('delete'):
@@ -235,7 +282,7 @@ class Record(EventEmitter, object):
             self, remote_version, remote_data, message, error, data):
         if not error:
             old_version = self.version
-            self.version = int(remote_version)
+            self._version = int(remote_version)
 
             old_value = self._data
 
@@ -287,7 +334,7 @@ class Record(EventEmitter, object):
             data = json.loads(message['data'][2])
 
         if self.version is None:
-            self.version = version
+            self._version = version
         elif self.version + 1 != version:
             if message['action'] == action_constants.PATCH:
                 self._connection.send_message(topic_constants.RECORD,
@@ -299,7 +346,7 @@ class Record(EventEmitter, object):
             return
 
         self._begin_change()
-        self.version = version
+        self._version = version
         if message['action'] == action_constants.PATCH:
             jsonpath.set(self._data, message['data'][2], data, False)
         else:
@@ -308,7 +355,7 @@ class Record(EventEmitter, object):
         self._complete_change()
 
     def _send_update(self, path, data, config):
-        self.version += 1
+        self._version += 1
         if not path:
             if config:
                 msg_data = [self.name, self.version, data, config]
@@ -355,7 +402,7 @@ class Record(EventEmitter, object):
 
     def _on_read(self, message):
         self._begin_change()
-        self.version = int(message['data'][1])
+        self._version = int(message['data'][1])
         self._data = json.loads(message['data'][2])
         self._complete_change()
         self._set_ready()
@@ -462,46 +509,39 @@ class Record(EventEmitter, object):
     def read_future(self):
         return self._read_future
 
+    @property
+    def version(self):
+        return self._version
 
-class List(EventEmitter, object):
-    # TODO: Consider making List a subclass of Record
 
-    def __init__(self, record_handler, record, options):
-        super(List, self).__init__()
-        self._record_handler = record_handler
-        self._record = record
+class List(Record):
 
-        self._apply_record_update = self._record._apply_update
-        self._record._apply_update = self._apply_update
-
-        self._record.on('delete', partial(self.emit, 'delete'))
-        self._record.on('discard', self._on_discard)
-        self._record.on('ready', self._on_ready)
-
-        self._is_ready = self._record.is_ready
-        self.name = record.name
-
-        self._emitter = EventEmitter()
-
-        self._queued_methods = []
+    def __init__(self, name, list_options, connection, options, client):
+        super(List, self).__init__(name, list_options, connection, options,
+                                   client)
         self._before_structure = None
         self._has_add_listener = None
         self._has_move_listener = None
 
-        self.delete = self._record.delete
-        self.discard = self._record.discard
-        self.when_ready = self._record.when_ready
-        self.usages = self._record.usages
-
-    def get_entries(self):
-        entries = self._record.get()
+    def get(self):
+        """
+        Return the list of entries or an empty array if the list hasn't been
+        populated yet.
+        """
+        entries = super(List, self).get()
 
         if not isinstance(entries, list):
             return []
 
         return entries
 
-    def set_entries(self, entries):
+    def set(self, entries):
+        """
+        Update the list with a new set of entries.
+
+        Args:
+            entries (list): the new entries
+        """
         error_msg = 'entries must be a list of record names'
 
         if not isinstance(entries, list):
@@ -511,59 +551,74 @@ class List(EventEmitter, object):
             if not isinstance(entry, str_types):
                 raise ValueError(error_msg)
 
-        if not self._record.is_ready:
-            self._queued_methods.append(partial(self.set_entries, entries))
+        if not self.is_ready:
+            self._queued_method_calls.append(partial(self.set, entries))
         else:
             self._before_change()
-            self._record.set(entries)
+            super(List, self).set(entries)
             self._after_change()
 
     def remove_entry(self, entry):
-        if not self._record.is_ready:
-            self._queued_methods.append(partial(self.remove_entry, entry))
+        """
+        Remove the entry from the list.
 
-        current_entries = deepcopy(self._record.get())
+        Args:
+            entry (str): the entry to remove
+        """
+        if not self.is_ready:
+            self._queued_method_calls.append(partial(self.remove_entry, entry))
+
+        current_entries = deepcopy(super(List, self).get())
         current_entries.remove(entry)
 
-        self.set_entries(current_entries)
+        self.set(current_entries)
 
     def remove_at(self, index):
-        if not self._record.is_ready:
-            self._queued_methods.append(partial(self.remove_entry_at, index))
+        """
+        Remove the entry at the specified index.
 
-        current_entries = deepcopy(self._record.get())
+        Args:
+            index (int): the index of the entry to remove
+        """
+        if not self.is_ready:
+            self._queued_method_calls.append(
+                partial(self.remove_entry_at, index))
+
+        current_entries = deepcopy(super(List, self).get())
         del current_entries[index]
-        self.set_entries(current_entries)
+        self.set(current_entries)
 
     def add_entry(self, entry, index=None):
-        if not self._record.is_ready:
-            self._queued_methods.append(partial(self.add_entry, entry, index))
+        """
+        Add an entry to the list.
 
-        entries = deepcopy(self.get_entries())
+        Args:
+            entry (str): the entry to add
+            index (int): the index at which to add the entry
+        """
+        if not self.is_ready:
+            self._queued_method_calls.append(
+                partial(self.add_entry, entry, index))
+
+        entries = deepcopy(self.get())
         if index is not None:
             entries.insert(index, entry)
         else:
             entries.append(entry)
 
-        self.set_entries(entries)
+        self.set(entries)
 
     def subscribe(self, callback):
-        self._record.subscribe(callback)
+        """
+        Proxies the underlying Record's subscribe method.
+        """
+        super(List, self).subscribe(callback)
 
     def unsubscribe(self, callback):
-        self._record.unsubscribe(callback)
-
-    def _on_ready(self):
-        self._is_ready = True
-
-        for method in self._queued_methods:
-            method()
-
-        self.emit('ready')
-
-    def _on_discard(self):
-        self._record._is_destroyed = True
-        self.emit('discard')
+        """
+        Proxies the underlying Record's unsubscribe method.
+        """
+        super(List, self).unsubscribe(callback)
 
     def _apply_update(self, message):
         if message['action'] == action_constants.PATCH:
@@ -573,7 +628,7 @@ class List(EventEmitter, object):
             message['data'][2] = '[]'
 
         self._before_change()
-        self._apply_record_update(message)
+        super(List, self)._apply_update(message)
         self._after_change()
 
     def _before_change(self):
@@ -618,7 +673,7 @@ class List(EventEmitter, object):
 
     def _get_structure(self):
         structure = {}
-        entries = self._record.get()
+        entries = super(List, self).get()
 
         for i, entry in enumerate(entries):
             if entry in structure:
@@ -629,20 +684,8 @@ class List(EventEmitter, object):
         return structure
 
     @property
-    def is_destroyed(self):
-        return self._record._is_destroyed
-
-    @property
-    def is_ready(self):
-        return self._is_ready
-
-    @property
     def is_empty(self):
-        return len(self.get_entries()) == 0
-
-    @property
-    def version(self):
-        return self._record.version
+        return len(self.get()) == 0
 
 
 class RecordHandler(EventEmitter, object):
@@ -674,11 +717,12 @@ class RecordHandler(EventEmitter, object):
     @gen.coroutine
     def get_record(self, name, record_options=None):
         """
-        Return an existing record or creates a new one.
+        Return an existing record or create a new one.
 
         Args:
-            name: the unique name of the record
-            record_options: a dict of parameters for this particular record
+            name (str): the unique name of the record
+            record_options (dict): a dict of parameters for this particular
+                record
         """
         if name in self._records:
             record = self._records[name]
@@ -698,23 +742,55 @@ class RecordHandler(EventEmitter, object):
         raise gen.Return(record)
 
     @gen.coroutine
-    def get_list(self, name, options=None):
-        record = yield self.get_record(name)
-        if name not in self._lists:
-            _list = List(self, record, options)
-            self._lists[name] = _list
-        else:
-            _list = self._lists[name]
-            self._records[name].usages += 1
+    def get_list(self, name, list_options=None):
+        """
+        Return an exising list or create a new one.
 
+        Args:
+            name (str): the unique name of the list
+            list_options (dict): a dict of parameters for this particular list
+        """
+        if name in self._lists:
+            _list = self._lists[name]
+        else:
+            _list = List(name, list_options, self._connection, self._options,
+                         self._client)
+
+            self._lists[name] = _list
+
+        if name not in self._records:
+            self._records[name] = _list
+
+            _list.on('error', partial(self._on_record_error, name))
+            _list.on('destroyPending', partial(self._on_destroy_pending, name))
+            _list.on('delete', partial(self._remove_record, name))
+            _list.on('discard', partial(self._remove_record, name))
+
+        self._records[name].usages += 1
+
+        yield _list.read_future
         raise gen.Return(_list)
 
     def get_anonymous_record(self):
+        """
+        Return an anonymous record.
+        """
         future = concurrent.Future()
         future.set_result(AnonymousRecord(self))
         return future
 
     def listen(self, pattern, callback):
+        """
+        Listen for record subscriptions made by this or other clients. This is
+        useful to create "active" data providers, e.g. providers that only
+        provide data for a particular record if a user is actually interested in
+        it.
+
+        Args:
+            pattern (str): A combination of alpha numeric characters and
+                wildcards(*)
+            callback (callable):
+        """
         if pattern in self._listeners:
             self._client._on_error(topic_constants.RECORD,
                                    event_constants.LISTENER_EXISTS, pattern)
@@ -733,6 +809,13 @@ class RecordHandler(EventEmitter, object):
         return future
 
     def unlisten(self, pattern):
+        """
+        Remove a listener that was previously registered with `listen`.
+
+        Args:
+            pattern (str): A combination of alpha numeric characters and
+                wildcards(*)
+        """
         if pattern in self._listeners:
             listener = self._listeners[pattern]
             if not listener.destroy_pending:
@@ -752,6 +835,13 @@ class RecordHandler(EventEmitter, object):
         return future
 
     def snapshot(self, name, callback):
+        """
+        Retrieve the current record data without subscribing to changes.
+
+        Args:
+            name (str): the unique name of the record
+            callback (callable):
+        """
         if name in self._records and self._records[name].is_ready:
             callback(None, self._records[name].get())
             future = concurrent.Future()
@@ -762,6 +852,13 @@ class RecordHandler(EventEmitter, object):
         return future
 
     def has(self, name, callback):
+        """
+        Check whether the record exists.
+
+        Args:
+            name (str): the unique name of the record
+            callback (callable):
+        """
         if name in self._records:
             callback(None, True)
             future = concurrent.Future()
@@ -870,24 +967,47 @@ class AnonymousRecord(EventEmitter, object):
         self._proxy_method('discard')
 
     def get(self, path=None):
+        """
+        Proxies the actual record's get method.
+
+        Args:
+            path (str, optional): a JSON path. If not provided, the entire
+                record is returned
+        """
         if self._record is None:
             return None
 
         return self._record.get(path)
 
     def subscribe(self, callback, path=None):
+        """
+        Proxies the actual record's subscribe method.
+
+        Args:
+            callback (callable):
+            path (str): a JSON path. If not provided, the subscription is for
+                the entire record.
+        """
         self._subscriptions.append((callback, path))
 
         if self._record is not None:
             self._record.subscribe(callback, path, True)
 
     def unsubscribe(self, callback, path=None):
+        """
+        Proxies the actual record's unsubscribe method.
+
+        Args:
+            callback (callable):
+            path (str): a JSON path. If not provided, the subscription is for
+                the entire record.
+        """
         self._subscriptions.remove((callback, path))
 
         if self._record is not None:
             self._record.unsubscribe(callback, path)
 
-    def _on_record_get(record):
+    def _on_record_get(self, record):
         self._record = record
 
     @property
