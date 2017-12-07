@@ -204,11 +204,11 @@ class AckTimeoutRegistry(EventEmitter):
         unique_name = (action or "") + name
 
         self.remove(name, action)
-        self._client.io_loop.call_later(self._timeout_duration,
+        timeout = self._client.io_loop.call_later(self._timeout_duration,
                                         partial(self._on_timeout,
                                                 unique_name,
                                                 name))
-        self._register[unique_name] = None
+        self._register[unique_name] = timeout
 
     def remove(self, name, action=None):
         unique_name = (action or "") + name
