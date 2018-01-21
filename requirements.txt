@@ -1,2 +1,2 @@
-pyee==1.0.2
-tornado==4.4
+pyee>=1.0.2
+tornado>=4.4
