@@ -35,6 +35,7 @@ class RecordTest(testing.AsyncTestCase):
                              self.connection,
                              self.options,
                              self.client)
+        self.record._send_read()
         message = {'topic': 'R', 'action': 'R', 'data': ['testRecord', 0, '{}']}
         self.record._on_message(message)
 

@@ -68,8 +68,6 @@ class Record(EventEmitter, object):
         self._delete_ack_timeout = None
         self._discard_timeout = None
 
-        self._read_future = self._send_read()
-
     def get(self, path=None):
         """
         Returns a copy of either the entire dataset of the record or, if called
@@ -506,10 +504,6 @@ class Record(EventEmitter, object):
         return self._is_ready
 
     @property
-    def read_future(self):
-        return self._read_future
-
-    @property
     def version(self):
         return self._version
 
@@ -521,6 +515,7 @@ class List(Record):
                                    client)
         self._before_structure = None
         self._has_add_listener = None
+        self._has_remove_listener = None
         self._has_move_listener = None
 
     def get(self):
@@ -582,7 +577,7 @@ class List(Record):
         """
         if not self.is_ready:
             self._queued_method_calls.append(
-                partial(self.remove_entry_at, index))
+                partial(self.remove_at, index))
 
         current_entries = deepcopy(super(List, self).get())
         del current_entries[index]
@@ -651,25 +646,31 @@ class List(Record):
         before = self._before_structure
 
         if self._has_remove_listener:
-            for entry in before:
-                if (entry not in after or
-                        len(after[entry]) < len(before[entry])):
-                    for n in before[entry]:
-                        if entry not in after or n not in after[entry]:
-                            self.emit(ENTRY_REMOVED_EVENT, entry, n)
+            self._after_change_remove_listener(before, after)
 
         if self._has_add_listener or self._has_move_listener:
-            for entry in after:
-                if entry not in before:
-                    for n in after[entry]:
+            self._after_change_move_add_listener(before, after)
+
+    def _after_change_remove_listener(self, before, after):
+        for entry in before:
+            if (entry not in after or
+                    len(after[entry]) < len(before[entry])):
+                for n in before[entry]:
+                    if entry not in after or n not in after[entry]:
+                        self.emit(ENTRY_REMOVED_EVENT, entry, n)
+
+    def _after_change_move_add_listener(self, before, after):
+        for entry in after:
+            if entry not in before:
+                for n in after[entry]:
+                    self.emit(ENTRY_ADDED_EVENT, entry, n)
+            elif before[entry] != after[entry]:
+                added = len(before[entry]) != len(after[entry])
+                for n in after[entry]:
+                    if added and n not in before[entry]:
                         self.emit(ENTRY_ADDED_EVENT, entry, n)
-                elif before[entry] != after[entry]:
-                    added = len(before[entry]) != len(after[entry])
-                    for n in after[entry]:
-                        if added and n not in before[entry]:
-                            self.emit(ENTRY_ADDED_EVENT, entry, n)
-                        elif not added:
-                            self.emit(ENTRY_MOVED_EVENT, entry, n)
+                    elif not added:
+                        self.emit(ENTRY_MOVED_EVENT, entry, n)
 
     def _get_structure(self):
         structure = {}
@@ -738,7 +739,7 @@ class RecordHandler(EventEmitter, object):
 
             record.usages += 1
 
-        yield record.read_future
+        yield record._send_read()
         raise gen.Return(record)
 
     @gen.coroutine
@@ -768,7 +769,7 @@ class RecordHandler(EventEmitter, object):
 
         self._records[name].usages += 1
 
-        yield _list.read_future
+        yield _list._send_read()
         raise gen.Return(_list)
 
     def get_anonymous_record(self):
@@ -868,6 +869,41 @@ class RecordHandler(EventEmitter, object):
 
         return future
 
+    def _process_message(self, message, name):
+        action = message['action']
+        data = message['data']
+        processed = False
+
+        if (action == action_constants.READ and
+                self._snapshot_registry.has_request(name)):
+            processed = True
+            self._snapshot_registry.receive(name,
+                                            None,
+                                            json.loads(data[2]))
+
+        if (action == action_constants.HAS and
+                self._has_registry.has_request(name)):
+            processed = True
+            record_exists = message_parser.convert_typed(data[1], self._client)
+            self._has_registry.receive(name, None, record_exists)
+
+        listener = self._listeners.get(name, None)
+        if (action == action_constants.ACK and
+                data[0] == action_constants.UNLISTEN and
+                listener and listener.destroy_pending):
+            processed = True
+            listener.destroy()
+            del self._listeners[name]
+            del listener
+        elif listener:
+            processed = True
+            listener._on_message(message)
+        elif action in (action_constants.SUBSCRIPTION_FOR_PATTERN_REMOVED,
+                        action_constants.SUBSCRIPTION_HAS_PROVIDER):
+            processed = True
+
+        return processed
+
     def handle(self, message):
         action = message['action']
         data = message['data']
@@ -883,14 +919,15 @@ class RecordHandler(EventEmitter, object):
 
         if action in (action_constants.ACK, action_constants.ERROR):
             name = data[1]
+
             if data[0] in (action_constants.DELETE,
                            action_constants.UNSUBSCRIBE):
+                name = message['data'][1]
                 self._destroy_emitter.emit('destroy_ack_' + name, message)
 
                 if (message['data'][0] == action_constants.DELETE and
                         name in self._records):
                     self._records[name]._on_message(message)
-
                 return
 
             if data[0] in (action_constants.SNAPSHOT, action_constants.HAS):
@@ -907,32 +944,7 @@ class RecordHandler(EventEmitter, object):
             processed = True
             self._records[name]._on_message(message)
 
-        if (action == action_constants.READ and
-                self._snapshot_registry.has_request(name)):
-            processed = True
-            self._snapshot_registry.receive(name,
-                                            None,
-                                            json.loads(data[2]))
-
-        if (action == action_constants.HAS and
-                self._has_registry.has_request(name)):
-            processed = True
-            record_exists = message_parser.convert_typed(data[1], self._client)
-            self._has_registry.receive(name, None, record_exists)
-        listener = self._listeners.get(name, None)
-        if (action == action_constants.ACK and
-                data[0] == action_constants.UNLISTEN and
-                listener and listener.destroy_pending):
-            processed = True
-            listener.destroy()
-            del self._listeners[name]
-            del listener
-        elif listener:
-            processed = True
-            listener._on_message(message)
-        elif action in (action_constants.SUBSCRIPTION_FOR_PATTERN_REMOVED,
-                        action_constants.SUBSCRIPTION_HAS_PROVIDER):
-            processed = True
+        processed = self._process_message(message, name) or processed
 
         if not processed:
             self._client._on_error(topic_constants.RECORD,

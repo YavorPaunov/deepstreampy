@@ -112,19 +112,25 @@ def record_data(context, record_name, data):
 
 
 @when(u'the client sets the record "{record_name}" "{path}" to "{value}"')
-@testing.gen_test
 def set_record_path(context, record_name, value, path):
-    record = yield context.client.record.get_record(record_name)
+    def callback(f):
+        record = f.result()
+        record.set(value, path, context.write_acknowledge)
+
+    f = context.client.record.get_record(record_name)
+    f.add_done_callback(callback)
+
     if context.write_acknowledge:
         context.write_acknowledge.reset_mock()
-    record.set(value, path, context.write_acknowledge)
 
 
 @when(u'the client sets the record "{record_name}" to {value}')
-@testing.gen_test
 def set_record(context, record_name, value):
-    record = yield context.client.record.get_record(record_name)
-    record.set(json.loads(value), callback=context.write_acknowledge)
+    def callback(f):
+        record = f.result()
+        record.set(json.loads(value), callback=context.write_acknowledge)
+    f = context.client.record.get_record(record_name)
+    f.add_done_callback(callback)
 
 
 @when(u'the client discards the record named "{record_name}"')
