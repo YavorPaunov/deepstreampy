@@ -1,3 +1,4 @@
 [submodule "features/deepstream.io-client-specs"]
-	path = features/deepstream.io-client-specs
+    path = features/deepstream.io-client-specs
     url = https://github.com/YavorPaunov/deepstream.io-client-specs.git
+    branch = master
