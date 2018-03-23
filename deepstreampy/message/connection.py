@@ -70,7 +70,7 @@ class Connection(object):
         if elapsed >= heartbeat_tolerance:
             self._io_loop.remove_timeout(self._heartbeat_callback)
             self._websocket_handler.close()
-            self._on_error("Two connections heartbeats missed successively")
+            self._on_error("heartbeat not received in the last 1000 milliseconds")
         else:
             self._heartbeat_callback = self._io_loop.call_later(
                 self._heartbeat_interval, self._check_heartbeat)

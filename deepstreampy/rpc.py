@@ -168,7 +168,11 @@ class RPCHandler(object):
 
     def provide(self, name, callback):
         if not name:
-            raise ValueError("invalid argument name")
+            raise ValueError("invalid argument: name")
+        if not callback:
+            raise ValueError("invalid argument: callback")
+        if not callable(callback):
+            raise TypeError("expected callback to be a callable")
         if name in self._providers:
             raise ValueError("RPC {0} already registered".format(name))
 

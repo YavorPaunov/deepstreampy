@@ -20,17 +20,17 @@ else:
 @given(u'the client is initialised')
 @testing.gen_test
 def client_init(context):
-    context.client = yield connect(config.FIRST_SERVER_URL,
-                                   subscriptionTimeout=0.1,
-                                   recordReadAckTimeout=0.2,
-                                   recordReadTimeout=0.26,
-                                   recordDeleteTimeout=0.1,
-                                   rpcResponseTimeout=0.2)
+    context.client = yield connect(
+        config.FIRST_SERVER_URL,
+        subscriptionTimeout=0.1,
+        recordReadAckTimeout=0.2,
+        recordReadTimeout=0.26,
+        recordDeleteTimeout=0.1,
+        rpcResponseTimeout=0.2)
 
     def error_callback(message, event, t):
-        context.client_errors.append(dict(message=message,
-                                          event=event,
-                                          topic=t))
+        context.client_errors.append(
+            dict(message=message, event=event, topic=t))
 
     context.subscribe_callback = mock.Mock()
     context.client.on('error', error_callback)
@@ -39,18 +39,18 @@ def client_init(context):
 @given(u'the client is initialised with a small heartbeat interval')
 @testing.gen_test
 def client_init_small_heartbeat(context):
-    context.client = yield connect(config.FIRST_SERVER_URL,
-                                   subscriptionTimeout=0.1,
-                                   recordReadAckTimeout=0.2,
-                                   recordReadTimeout=0.26,
-                                   recordDeleteTimeout=0.1,
-                                   rpcResponseTimeout=0.2,
-                                   heartbeatInterval=0.5)
+    context.client = yield connect(
+        config.FIRST_SERVER_URL,
+        subscriptionTimeout=0.1,
+        recordReadAckTimeout=0.2,
+        recordReadTimeout=0.26,
+        recordDeleteTimeout=0.1,
+        rpcResponseTimeout=0.2,
+        heartbeatInterval=0.5)
 
     def error_callback(message, event, t):
-        context.client_errors.append(dict(message=message,
-                                          event=event,
-                                          topic=t))
+        context.client_errors.append(
+            dict(message=message, event=event, topic=t))
 
     context.subscribe_callback = mock.Mock()
     context.client.on('error', error_callback)
@@ -87,9 +87,10 @@ def client_last_login_failed(context, message):
 
 @then(u'the client throws a "{event}" error with message "{message}"')
 def client_error(context, event, message):
-    matching_errors = [e for e in context.client_errors if
-                       e['event'] == event and
-                       e['message'] == message]
+    matching_errors = [
+        e for e in context.client_errors
+        if e['event'] == event and e['message'] == message
+    ]
     assert len(matching_errors) > 0, context.client_errors
 
 
@@ -112,25 +113,39 @@ def record_data(context, record_name, data):
 
 
 @when(u'the client sets the record "{record_name}" "{path}" to "{value}"')
+@given(u'the client sets the record "{record_name}" "{path}" to "{value}"')
 def set_record_path(context, record_name, value, path):
+    context.write_acknowledge.reset_mock()
+
     def callback(f):
         record = f.result()
+        context.records[record_name] = record
         record.set(value, path, context.write_acknowledge)
 
-    f = context.client.record.get_record(record_name)
-    f.add_done_callback(callback)
-
-    if context.write_acknowledge:
+    if record_name in context.records.keys():
+        record = context.records[record_name]
         context.write_acknowledge.reset_mock()
+        record.set(value, path, context.write_acknowledge)
+    else:
+        f = context.client.record.get_record(record_name)
+        f.add_done_callback(callback)
 
 
 @when(u'the client sets the record "{record_name}" to {value}')
 def set_record(context, record_name, value):
     def callback(f):
         record = f.result()
+        context.records[record_name] = record
+        context.write_acknowledge.reset_mock()
         record.set(json.loads(value), callback=context.write_acknowledge)
-    f = context.client.record.get_record(record_name)
-    f.add_done_callback(callback)
+
+    if record_name in context.records.keys():
+        record = context.records[record_name]
+        context.write_acknowledge.reset_mock()
+        record.set(json.loads(value), callback=context.write_acknowledge)
+    else:
+        f = context.client.record.get_record(record_name)
+        f.add_done_callback(callback)
 
 
 @when(u'the client discards the record named "{record_name}"')
@@ -271,16 +286,16 @@ def record_snapshot(context, record_name, data):
 @testing.gen_test
 def event_subscribe(context, event_name):
     context.event_callbacks[event_name] = mock.Mock()
-    yield context.client.event.subscribe(
-        event_name, context.event_callbacks[event_name])
+    yield context.client.event.subscribe(event_name,
+                                         context.event_callbacks[event_name])
 
 
 @given(u'the client unsubscribes from an event named "{event_name}"')
 @when(u'the client unsubscribes from an event named "{event_name}"')
 @testing.gen_test
 def event_unsubscribe(context, event_name):
-    yield context.client.event.unsubscribe(
-        event_name, context.event_callbacks[event_name])
+    yield context.client.event.unsubscribe(event_name,
+                                           context.event_callbacks[event_name])
     del context.event_callbacks[event_name]
 
 
@@ -400,11 +415,17 @@ def rpc_callback_error(context, rpc_name, error):
     assert found_error, "Error {0} not thrown".format(error)
 
 
-@given(u'the client subscribes to presence events')
+@given(u'the client subscribes to presence events for "{users}"')
+@given(u'the client subscribes to all presence events')
 @testing.gen_test
-def presence_subscribe(context):
-    context.presence_callback = mock.Mock()
-    yield context.client.presence.subscribe(context.presence_callback)
+def presence_subscribe(context, users=None):
+    callback = mock.Mock()
+    context.presence_callback = callback
+    if users is None:
+        yield context.client.presence.subscribe(callback)
+    else:
+        users = users.split(",")
+        yield context.client.presence.subscribe(callback, users)
 
 
 @given(u'the client queries for connected clients')
@@ -412,6 +433,16 @@ def presence_subscribe(context):
 def presence_query(context):
     context.presence_query_callback = mock.Mock()
     future = context.client.presence.get_all(context.presence_query_callback)
+    if not context.client._connection._websocket_handler.stream.closed():
+        yield future
+
+
+@given(u'the client queries if "{users}" are online')
+@testing.gen_test
+def presence_query_users(context, users):
+    context.presence_query_callback = mock.Mock()
+    future = context.client.presence.get(context.presence_query_callback,
+                                         users.split(","))
     if not context.client._connection._websocket_handler.stream.closed():
         yield future
 
@@ -426,27 +457,41 @@ def presence_notify_clients(context, client_names):
     context.presence_query_callback.assert_called_with(client_names.split(','))
 
 
+@then(u'the client is notified with \'{data}\'')
+def presence_notify_multiple_clients(context, data):
+    clients = json.loads(data)
+    context.presence_query_callback.assert_called_with(clients)
+
+
 @then(u'the client is notified that client "{client_name}" logged in')
 def presence_notify_log_in(context, client_name):
     context.presence_callback.assert_called_with(client_name, True)
+    context.presence_callback.reset_mock()
 
 
 @then(u'the client is not notified that client "{client_name}" logged in')
 def presence_no_notify_log_in(context, client_name):
     context.presence_callback.assert_not_called()
+    context.presence_callback.reset_mock()
 
 
 @then(u'the client is notified that client "{client_name}" logged out')
 def presence_notify_log_out(context, client_name):
     context.presence_callback.assert_called_with(client_name, False)
+    context.presence_callback.reset_mock()
 
 
-@when(u'the client unsubscribes to presence events')
-@given(u'the client unsubscribes to presence events')
+@when(u'the client unsubscribes to presence events for "{user}"')
+@given(u'the client unsubscribes to presence events for "{user}"')
+@when(u'the client unsubscribes to all presence events')
+@given(u'the client unsubscribes to all presence events')
 @testing.gen_test
-def presence_unsubscribe(context):
-    yield context.client.presence.unsubscribe(context.presence_callback)
-    context.presence_callback = mock.Mock()
+def presence_unsubscribe(context, user=None):
+    if user is None:
+        yield context.client.presence.unsubscribe(context.presence_callback)
+    else:
+        yield context.client.presence.unsubscribe(context.presence_callback,
+                                                  [user])
 
 
 @given(u'the client requires write acknowledgement on record "{record_name}"')

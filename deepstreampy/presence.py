@@ -8,16 +8,17 @@ from deepstreampy.utils import AckTimeoutRegistry
 from deepstreampy.utils import ResubscribeNotifier
 
 from tornado import concurrent
-from pyee import EventEmitter
+
+import json
 
 
 class PresenceHandler(object):
-
     def __init__(self, connection, client, **options):
         self._options = options
         self._connection = connection
         self._client = client
-        self._emitter = EventEmitter()
+        self._callbacks = {}
+        self._query_callback = None
         subscription_timeout = options.get("subscriptionTimeout", 15)
         self._ack_timeout_registry = AckTimeoutRegistry(
             client, topic_constants.PRESENCE, subscription_timeout)
@@ -25,75 +26,86 @@ class PresenceHandler(object):
             client, self._resubscribe)
 
     def get_all(self, callback):
-        if not self._emitter.listeners(action_constants.QUERY):
-            future = self._connection.send_message(
-                topic_constants.PRESENCE,
-                action_constants.QUERY,
-                [action_constants.QUERY])
+        self._query_callback = callback
+        return self._connection.send_message(topic_constants.PRESENCE,
+                                             action_constants.QUERY,
+                                             [action_constants.QUERY])
+
+    def get(self, callback, users):
+        self._query_callback = callback
+        return self._connection.send_message(topic_constants.PRESENCE,
+                                             action_constants.QUERY, users)
+
+    def subscribe(self, callback, users=None):
+        if users is None:
+            self._callbacks[topic_constants.PRESENCE] = callback
+            users_str = topic_constants.PRESENCE
         else:
-            future = concurrent.Future()
-            future.set_result(None)
+            for user in users:
+                self._callbacks[user] = callback
+            users_str = ",".join(users)
 
-        self._emitter.once(action_constants.QUERY, callback)
-        return future
+        self._ack_timeout_registry.add(action_constants.SUBSCRIBE, users_str)
 
-    def subscribe(self, callback):
-        if not self._emitter.listeners(topic_constants.PRESENCE):
-            self._ack_timeout_registry.add(
-                topic_constants.PRESENCE, action_constants.SUBSCRIBE)
-            future = self._connection.send_message(topic_constants.PRESENCE,
-                                                   action_constants.SUBSCRIBE,
-                                                   [action_constants.SUBSCRIBE])
+        return self._connection.send_message(
+            topic_constants.PRESENCE, action_constants.SUBSCRIBE, users_str)
+
+    def unsubscribe(self, callback, users=None):
+        users_str = ""
+
+        if users is None:
+            del self._callbacks[topic_constants.PRESENCE]
         else:
-            future = concurrent.Future()
-            future.set_result(None)
+            for user in users:
+                del self._callbacks[user]
+            users_str = ",".join(users)
 
-        self._emitter.on(topic_constants.PRESENCE, callback)
-        return future
+        self._ack_timeout_registry.add(action_constants.UNSUBSCRIBE, users_str)
 
-    def unsubscribe(self, callback):
-        self._emitter.remove_listener(topic_constants.PRESENCE, callback)
-
-        if not self._emitter.listeners(topic_constants.PRESENCE):
-            self._ack_timeout_registry.add(topic_constants.PRESENCE,
-                                           action_constants.UNSUBSCRIBE)
-            future = self._connection.send_message(
-                topic_constants.PRESENCE,
-                action_constants.UNSUBSCRIBE,
-                [action_constants.UNSUBSCRIBE])
-        else:
-            future = concurrent.Future()
-            future.set_result(None)
-
-        return future
+        return self._connection.send_message(
+            topic_constants.PRESENCE, action_constants.UNSUBSCRIBE, users_str)
 
     def handle(self, message):
         action = message['action']
         data = message['data']
-
-        if (action == action_constants.ERROR and
-                data[0] == event_constants.MESSAGE_DENIED):
-            self._ack_timeout_registry.remove(topic_constants.PRESENCE, data[1])
+        if (action == action_constants.ERROR
+                and data[0] == event_constants.MESSAGE_DENIED):
+            self._ack_timeout_registry.remove(topic_constants.PRESENCE,
+                                              data[1])
             message['processedError'] = True
             self._client._on_error(topic_constants.PRESENCE,
-                                   event_constants.MESSAGE_DENIED,
-                                   data[1])
+                                   event_constants.MESSAGE_DENIED, data[1])
         elif action == action_constants.ACK:
             self._ack_timeout_registry.clear(message)
         elif action == action_constants.PRESENCE_JOIN:
-            self._emitter.emit(topic_constants.PRESENCE, data[0], True)
+            user = data[0]
+            if user in self._callbacks.keys():
+                self._callbacks[user](user, True)
+            if topic_constants.PRESENCE in self._callbacks:
+                self._callbacks[topic_constants.PRESENCE](user, True)
         elif action == action_constants.PRESENCE_LEAVE:
-            self._emitter.emit(topic_constants.PRESENCE, data[0], False)
+            user = data[0]
+            if user in self._callbacks.keys():
+                self._callbacks[user](user, False)
+            if topic_constants.PRESENCE in self._callbacks:
+                self._callbacks[topic_constants.PRESENCE](user, False)
         elif action == action_constants.QUERY:
-            self._emitter.emit(action_constants.QUERY, data)
+            parsed = self._parse_query_response(data)
+            if self._query_callback:
+                self._query_callback(parsed)
+                self._query_callback = None
         else:
-            self._client._on_error(
-                topic_constants.PRESENCE,
-                event_constants.UNSOLICITED_MESSAGE,
-                action)
+            self._client._on_error(topic_constants.PRESENCE,
+                                   event_constants.UNSOLICITED_MESSAGE, action)
+
+    def _parse_query_response(self, response):
+        if response and response[0].isdigit():
+            data = json.loads(response[1])
+            return data
+        return response
 
     def _resubscribe(self):
-        if self._emitter.listeners(topic_constants.PRESENCE):
+        if self._callbacks:
             self._connection.send_message(topic_constants.PRESENCE,
                                           action_constants.SUBSCRIBE,
                                           [action_constants.SUBSCRIBE])

@@ -118,7 +118,7 @@ def before_scenario(context, scenario):
     context.listen_callback = None
     context.rpc_response = None
     context.records = {}
-    context.write_acknowledge = None
+    context.write_acknowledge = mock.Mock()
     context.login_future = None
 
 

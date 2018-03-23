@@ -41,11 +41,13 @@ def set(data, path, value, deep_copy):
             if (i + 1 < len(tokens) and
                     isinstance(tokens[i+1], int)):
                 if isinstance(node, list):
+                    print("PAD2")
                     _pad_list(node, token + 1, None)
 
                 node[token] = []
             else:
                 if isinstance(node, list):
+                    print("PAD1")
                     _pad_list(node, token + 1, None)
 
                 node[token] = {}

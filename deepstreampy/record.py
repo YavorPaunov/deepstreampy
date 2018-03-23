@@ -94,6 +94,19 @@ class Record(EventEmitter, object):
             path (str, optional): a JSON path
             callback (callable)
         """
+        config = {}
+        if callback:
+            state = self._client.connection_state
+            if state in (connection_state.CLOSED,
+                         connection_state.RECONNECTING):
+
+                callback('Connection error: error updating record as '
+                         'connection was closed')
+                return
+            else:
+                config['writeSuccess'] = True
+                self._set_up_callback(self.version, callback)
+
         if path is None and not isinstance(data, (dict, list)):
             raise ValueError(
                 "Invalid record data {0}: Record data must be a dict or list.")
@@ -105,22 +118,16 @@ class Record(EventEmitter, object):
             self._queued_method_calls.append(partial(self.set, data, path))
             return
 
+
         old_value = self._data
         deep_copy = self._options.get('recordDeepCopy', True)
         new_value = jsonpath.set(old_value, path, data, deep_copy)
 
         if new_value == old_value:
+            if callback:
+                callback(None)
             return
 
-        config = {}
-        if callback:
-            config['writeSuccess'] = True
-            self._set_up_callback(self.version, callback)
-            state = self._client.connection_state
-            if state in (connection_state.CLOSED,
-                         connection_state.RECONNECTING):
-                callback('Connection error: error updating record as '
-                         'connection was closed')
 
         self._send_update(path, data, config)
         self._apply_change(new_value)
@@ -292,7 +299,8 @@ class Record(EventEmitter, object):
                 callback = self._write_callbacks.get(self.version, None)
                 if callback:
                     callback(None)
-                    del self._write_callbacks[remote_version]
+                    if remote_version in self._write_callbacks.keys():
+                        del self._write_callbacks[remote_version]
 
                 return
 
@@ -951,8 +959,9 @@ class RecordHandler(EventEmitter, object):
                                    event_constants.UNSOLICITED_MESSAGE,
                                    name)
 
-    def _on_record_error(self, record_name, error, message=None):
-        self._client._on_error(topic_constants.RECORD, error, record_name)
+    def _on_record_error(self, record_name, error):
+        message = "No ACK message received in time for {}".format(record_name)
+        self._client._on_error(topic_constants.RECORD, error, message)
 
     def _on_destroy_pending(self, record_name):
         on_message = self._records[record_name]._on_message

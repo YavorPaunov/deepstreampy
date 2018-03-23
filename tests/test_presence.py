@@ -41,12 +41,12 @@ class PresenceHandlerTest(testing.AsyncTestCase):
 
         # Send subscribe message
         self.client.presence.subscribe(callback)
-        self.handler.write_message.assert_called_with(msg('U|S|S+'))
+        self.handler.write_message.assert_called_with(msg('U|S|U+'))
 
         # Emit timeout error
         self.wait()
         error_callback.assert_called_with(
-            'No ACK message received in time for U', 'ACK_TIMEOUT', 'U')
+            'No ACK message received in time for S', 'ACK_TIMEOUT', 'U')
         error_callback.reset_mock()
 
         # receive ack message for subscribe
@@ -84,12 +84,12 @@ class PresenceHandlerTest(testing.AsyncTestCase):
 
         # Unsubscribe to client logins
         self.client.presence.unsubscribe(callback)
-        self.handler.write_message.assert_called_with(msg('U|US|US+'))
+        self.handler.write_message.assert_called_with(msg('U|US+'))
 
         # emit ack timeout for unsubscribe
         self.wait()
         error_callback.assert_called_with(
-            'No ACK message received in time for U', 'ACK_TIMEOUT', 'U')
+            'No ACK message received in time for US', 'ACK_TIMEOUT', 'U')
         error_callback.reset_mock()
 
         # receive ack for unsubscrube

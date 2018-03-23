@@ -55,7 +55,23 @@ class RPCHandlerTest(testing.AsyncTestCase):
                 0.5, functools.partial(response.send, result))
             self.connection._io_loop.call_later(0.6, self.stop)
 
-    def testhandle_rpc_providers(self):
+    def test_validate_params(self):
+        with self.assertRaises(ValueError):
+            self.client.rpc.provide('', lambda: None)
+
+        with self.assertRaises(TypeError):
+            self.client.rpc.provide(123, lambda: None)
+
+        with self.assertRaises(ValueError):
+            self.client.rpc.provide(None, lambda: None)
+
+        with self.assertRaises(ValueError):
+            self.client.rpc.provide('name', None)
+
+        with self.assertRaises(TypeError):
+            self.client.rpc.provide('name', 123)
+
+    def test_handle_rpc_providers(self):
         # RPCHandler is created
         rpchandler = self.client.rpc
         self.assertTrue(isinstance(self.client.rpc, rpc.RPCHandler))
