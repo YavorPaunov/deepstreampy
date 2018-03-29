@@ -15,13 +15,12 @@ import sys
 import time
 import random
 
-num_types = ((int, long, float, complex) if sys.version_info < (3,) else
-             (int, float, complex))
-str_types = (str, unicode) if sys.version_info < (3,) else (str,)
+num_types = ((int, long, float, complex)
+             if sys.version_info < (3, ) else (int, float, complex))
+str_types = (str, unicode) if sys.version_info < (3, ) else (str, )
 
 
 class SingleNotifier(object):
-
     def __init__(self, client, connection, topic, action, timeout_duration):
         self._client = client
         self._connection = connection
@@ -31,8 +30,8 @@ class SingleNotifier(object):
 
         self._requests = dict()
 
-        self._resubscribe_notifier = ResubscribeNotifier(client,
-                                                         self._resend_requests)
+        self._resubscribe_notifier = ResubscribeNotifier(
+            client, self._resend_requests)
 
     def has_request(self, name):
         return name in self._requests
@@ -40,16 +39,18 @@ class SingleNotifier(object):
     def request(self, name, callback):
         if name not in self._requests:
             self._requests[name] = []
-            future = self._connection.send_message(
-                self._topic, self._action, [name])
+            future = self._connection.send_message(self._topic, self._action,
+                                                   [name])
         else:
             future = concurrent.Future()
             future.set_result()
 
         response_timeout = self._client.io_loop.call_later(
             self._timeout_duration, partial(self._on_response_timeout, name))
-        self._requests[name].append({'timeout': response_timeout,
-                                     'callback': callback})
+        self._requests[name].append({
+            'timeout': response_timeout,
+            'callback': callback
+        })
 
         return future
 
@@ -63,20 +64,19 @@ class SingleNotifier(object):
     def _on_response_timeout(self, name):
         msg = ('No response received in time for '
                '{0}|{1}|{2}').format(self._topic, self._action, name)
-        self._client._on_error(self._topic,
-                               event_constants.RESPONSE_TIMEOUT,
+        self._client._on_error(self._topic, event_constants.RESPONSE_TIMEOUT,
                                msg)
 
     def _resend_requests(self):
         for request in self._requests:
-            self._connection.send_message(
-                self._topic, self._action, [self._requests[request]])
+            self._connection.send_message(self._topic, self._action,
+                                          [self._requests[request]])
+
 
 CallbackResponse = namedtuple('CallbackResponse', 'accept reject')
 
 
 class Listener(object):
-
     def __init__(self, listener_type, pattern, callback, options, client,
                  connection):
         self._type = listener_type
@@ -88,10 +88,10 @@ class Listener(object):
         self._send_future = None
 
         subscription_timeout = options.get("subscriptionTimeout", 15)
-        self._ack_timeout = connection._io_loop.call_later(subscription_timeout,
-                                                           self._on_ack_timeout)
-        self._resubscribe_notifier = ResubscribeNotifier(client,
-                                                         self._send_listen)
+        self._ack_timeout = connection._io_loop.call_later(
+            subscription_timeout, self._on_ack_timeout)
+        self._resubscribe_notifier = ResubscribeNotifier(
+            client, self._send_listen)
         self._send_listen()
         self._destroy_pending = False
 
@@ -117,8 +117,9 @@ class Listener(object):
             self._type, action_constants.LISTEN_REJECT, [self._pattern, name])
 
     def _create_callback_response(self, message):
-        return CallbackResponse(accept=partial(self.accept, message['data'][1]),
-                                reject=partial(self.reject, message['data'][1]))
+        return CallbackResponse(
+            accept=partial(self.accept, message['data'][1]),
+            reject=partial(self.reject, message['data'][1]))
 
     def _on_message(self, message):
         action = message['action']
@@ -127,8 +128,8 @@ class Listener(object):
             self._connection._io_loop.remove_timeout(self._ack_timeout)
         elif action == action_constants.SUBSCRIPTION_FOR_PATTERN_FOUND:
             # TODO: Show deprecated message
-            self._callback(
-                data[1], True, self._create_callback_response(message))
+            self._callback(data[1], True,
+                           self._create_callback_response(message))
         elif action == action_constants.SUBSCRIPTION_FOR_PATTERN_REMOVED:
             self._callback(data[1], False)
         else:
@@ -141,9 +142,9 @@ class Listener(object):
             self._type, action_constants.LISTEN, [self._pattern])
 
     def _on_ack_timeout(self):
-        self._client._on_error(self._type, event_constants.ACK_TIMEOUT,
-                               ('No ACK message received in time for ' +
-                                self._pattern))
+        self._client._on_error(
+            self._type, event_constants.ACK_TIMEOUT,
+            ('No ACK message received in time for ' + self._pattern))
 
     @property
     def destroy_pending(self):
@@ -192,7 +193,6 @@ class ResubscribeNotifier(object):
 
 
 class AckTimeoutRegistry(EventEmitter):
-
     def __init__(self, client, topic, timeout_duration):
         super(AckTimeoutRegistry, self).__init__()
         self._client = client
@@ -203,11 +203,11 @@ class AckTimeoutRegistry(EventEmitter):
     def add(self, name, action=None):
         unique_name = (action or "") + name
 
-        self.remove(name, action)
+        self.remove(unique_name, action)
         timeout = self._client.io_loop.call_later(self._timeout_duration,
-                                        partial(self._on_timeout,
-                                                unique_name,
-                                                name))
+                                                  partial(
+                                                      self._on_timeout,
+                                                      unique_name, name))
         self._register[unique_name] = timeout
 
     def remove(self, name, action=None):
@@ -216,15 +216,10 @@ class AckTimeoutRegistry(EventEmitter):
             self.clear({'data': [action, name]})
 
     def clear(self, message):
-        if len(message['data']) > 1:
-            name = message['data'][1]
-        else:
-            name = ""
+        unique_name = "".join(message['data'][:2])
 
-        unique_name = (message['data'][0] or "") + name
-        timeout = self._register.get(unique_name, self._register.get(name))
-
-        if timeout:
+        if unique_name in self._register:
+            timeout = self._register[unique_name]
             self._client.io_loop.remove_timeout(timeout)
         else:
             self._client._on_error(self._topic,
@@ -243,9 +238,9 @@ def _pad_list(l, index, value):
 
 
 class Undefined(object):
-
     def __repr__(self):
         return 'Undefined'
+
 
 Undefined = Undefined()
 
@@ -256,7 +251,7 @@ def itoa(num, radix):
     """
     result = ""
     while num > 0:
-        result = "0123456789abcdefghijklmnopqrstuvwxyz"[num % radix] + result
+        result = "0123456789abcdefghijklmnopqrstuvwxyz" [num % radix] + result
         num //= radix
     return result
 

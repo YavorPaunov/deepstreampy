@@ -394,25 +394,25 @@ def rpc_unprovide(context, rpc_name):
 @when(u'the client requests RPC "{rpc_name}" with data "{data}"')
 @testing.gen_test
 def rpc_client_request(context, rpc_name, data):
-    context.rpc_request_callback = mock.Mock()
-    yield context.client.rpc.make(rpc_name, data, context.rpc_request_callback)
+    context.rpc_future = context.client.rpc.make(rpc_name, data)
 
 
 @then(u'the client recieves a successful RPC callback for "{rpc_name}" with '
       'data "{data}"')
+@testing.gen_test
 def rpc_callback(context, rpc_name, data):
-    context.rpc_request_callback.assert_called_with(None, data)
+    result = yield context.rpc_future
+    assert result == data, "Actually: {}".format(result)
 
 
 @then(u'the client recieves an error RPC callback for "{rpc_name}" with the '
-      'message "{error}"')
-def rpc_callback_error(context, rpc_name, error):
+      'message "{expected}"')
+@testing.gen_test
+def rpc_callback_error(context, rpc_name, expected):
     found_error = False
-    for err in context.rpc_request_callback.call_args_list:
-        if err[0][0] == error:
-            found_error = True
+    actual_error = context.rpc_future.exception()
 
-    assert found_error, "Error {0} not thrown".format(error)
+    assert str(actual_error) == expected, "Error {0} not thrown".format(expected)
 
 
 @given(u'the client subscribes to presence events for "{users}"')
@@ -429,38 +429,35 @@ def presence_subscribe(context, users=None):
 
 
 @given(u'the client queries for connected clients')
-@testing.gen_test
 def presence_query(context):
-    context.presence_query_callback = mock.Mock()
-    future = context.client.presence.get_all(context.presence_query_callback)
-    if not context.client._connection._websocket_handler.stream.closed():
-        yield future
+    context.presence_query_future = context.client.presence.get_all()
 
 
 @given(u'the client queries if "{users}" are online')
-@testing.gen_test
 def presence_query_users(context, users):
-    context.presence_query_callback = mock.Mock()
-    future = context.client.presence.get(context.presence_query_callback,
-                                         users.split(","))
-    if not context.client._connection._websocket_handler.stream.closed():
-        yield future
-
+    context.presence_query_future = context.client.presence.get(users.split(","))
 
 @then(u'the client is notified that no clients are connected')
+@testing.gen_test
 def presence_notify_no_clients(context):
-    context.presence_query_callback.assert_called_with([])
+    expected = []
+    actual = yield context.presence_query_future
+    assert actual == expected, "Actually: {}".format(actual)
 
 
 @then(u'the client is notified that clients "{client_names}" are connected')
+@testing.gen_test
 def presence_notify_clients(context, client_names):
-    context.presence_query_callback.assert_called_with(client_names.split(','))
-
+    expected = client_names.split(",")
+    actual = yield context.presence_query_future
+    assert actual == expected, "Actually: {}".format(actual)
 
 @then(u'the client is notified with \'{data}\'')
+@testing.gen_test
 def presence_notify_multiple_clients(context, data):
-    clients = json.loads(data)
-    context.presence_query_callback.assert_called_with(clients)
+    expected = json.loads(data)
+    actual = yield context.presence_query_future
+    assert actual == expected, "Actually: {}".format(actual)
 
 
 @then(u'the client is notified that client "{client_name}" logged in')

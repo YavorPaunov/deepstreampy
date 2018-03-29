@@ -86,7 +86,7 @@ class RPCHandlerTest(testing.AsyncTestCase):
         expected_error = ('No ACK message received in time for addTwo',
                           'ACK_TIMEOUT',
                           'P')
-        self.assertTrue(expected_error in self.client_errors)
+        self.assertIn(expected_error, self.client_errors)
 
         # Reply to a sync RPC request
         rpchandler.handle({'topic': 'RPC',
@@ -131,7 +131,7 @@ class RPCHandlerTest(testing.AsyncTestCase):
         expected_error = ('No ACK message received in time for addTwo',
                           'ACK_TIMEOUT',
                           'P')
-        self.assertTrue(expected_error in self.client_errors)
+        self.assertIn(expected_error, self.client_errors)
 
         # Reject call to deregistered provider
         rpchandler.handle({
@@ -141,14 +141,14 @@ class RPCHandlerTest(testing.AsyncTestCase):
 
         self.handler.write_message.assert_called_with(msg('P|REJ|addTwo|434+'))
 
+    @testing.gen_test
     def test_make_rpcs(self):
         # RPCHandler is created
         rpchandler = self.client.rpc
         self.assertTrue(isinstance(self.client.rpc, rpc.RPCHandler))
 
         # Make a successful RPC for addTwo
-        rpc_callback = mock.Mock()
-        rpchandler.make('addTwo', {'numA': 3, 'numB': 8}, rpc_callback)
+        f = rpchandler.make('addTwo', {'numA': 3, 'numB': 8})
         self.assertTrue(self.handler.write_message.call_args[0][0] in
                         (msg('P|REQ|addTwo|1|O{"numA":3,"numB":8}+'),
                          msg('P|REQ|addTwo|1|O{"numB":8,"numA":3}+')))
@@ -157,29 +157,34 @@ class RPCHandlerTest(testing.AsyncTestCase):
                            'action': 'RES',
                            'data': ['addTwo', u'1', 'N11']})
 
-        rpc_callback.assert_called_with(None, 11)
+        result = yield f
+        self.assertEquals(result, 11)
 
         # Make RPC for addTwo but receive an error
         self.assertTrue(self.handler.write_message.call_args[0][0] in
                         (msg('P|REQ|addTwo|1|O{"numA":3,"numB":8}+'),
                          msg('P|REQ|addTwo|1|O{"numB":8,"numA":3}+')))
 
-        rpchandler.make('addTwo', {'numA': 3, 'numB': 8}, rpc_callback)
+        f = rpchandler.make('addTwo', {'numA': 3, 'numB': 8})
         rpchandler.handle({'topic': 'RPC',
                            'action': 'E',
                            'data': ['NO_PROVIDER', 'addTwo', '1']})
-        rpc_callback.assert_called_with('NO_PROVIDER', None)
-        rpc_callback.reset_mock()
+
+        with self.assertRaises(rpc.RPCException) as ectx:
+            yield f
+
+        self.assertEquals(str(ectx.exception), 'NO_PROVIDER')
 
         # Make RPC for addTwo but receive no ack in time
-        rpchandler.make('addTwo', {'numA': 3, 'numB': 8}, rpc_callback)
+        f = rpchandler.make('addTwo', {'numA': 3, 'numB': 8})
         self.assertTrue(self.handler.write_message.call_args[0][0] in
                         (msg('P|REQ|addTwo|1|O{"numA":3,"numB":8}+'),
                          msg('P|REQ|addTwo|1|O{"numB":8,"numA":3}+')))
 
-        self.connection._io_loop.call_later(2, self.stop)
-        self.wait()
-        rpc_callback.assert_called_with('ACK_TIMEOUT', None)
+        with self.assertRaises(rpc.RPCException) as ectx:
+            yield f
+
+        self.assertEquals(str(ectx.exception), 'ACK_TIMEOUT')
 
 
 class RPCResponseTest(testing.AsyncTestCase):

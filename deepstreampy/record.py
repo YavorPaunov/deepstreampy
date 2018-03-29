@@ -79,8 +79,14 @@ class Record(EventEmitter, object):
         Args:
             path (str, optional): a JSON path
         """
-        deep_copy = self._options.get('recordDeepCopy', False)
-        return jsonpath.get(self._data, path, deep_copy)
+        return self._get_path(path)
+        f = concurrent.Future()
+
+        def ready_callback(_):
+            f.set_result(self._get_path(path))
+
+        self.when_ready(ready_callback)
+        return f
 
     def set(self, data, path=None, callback=None):
         """
@@ -148,7 +154,12 @@ class Record(EventEmitter, object):
         if self._check_destroyed('subscribe'):
             return
 
-        self._emitter.on(path or ALL_EVENT, callback)
+        if path is None:
+            event = ALL_EVENT
+        else:
+            event = path
+
+        self._emitter.on(event, callback)
 
         if trigger_now and self._is_ready:
             if path:
@@ -167,7 +178,11 @@ class Record(EventEmitter, object):
         if self._check_destroyed('unsubscribe'):
             return
 
-        event = path or ALL_EVENT
+        if path is None:
+            event = ALL_EVENT
+        else:
+            event = path
+
         self._emitter.remove_listener(event, callback)
 
     def discard(self):
@@ -233,6 +248,7 @@ class Record(EventEmitter, object):
 
     def _on_message(self, message):
         action = message['action']
+
         if action == action_constants.READ:
             if self.version is None:
                 self._client.io_loop.remove_timeout(self._read_timeout)
@@ -404,7 +420,7 @@ class Record(EventEmitter, object):
             old_value = jsonpath.get(old_data, path, False)
 
             if new_value != old_value:
-                self._emitter.emit(path, self.get(path))
+                self._emitter.emit(path, self._get_path(path))
 
     def _on_read(self, message):
         self._begin_change()
@@ -428,8 +444,9 @@ class Record(EventEmitter, object):
         return self._connection.send_message(
             topic_constants.RECORD, action_constants.CREATEORREAD, [self.name])
 
-    def _get_path(self, path):
-        return jsonpath.get(self._data, path, True)
+    def _get_path(self, path=None):
+        deep_copy = self._options.get('recordDeepCopy', False)
+        return jsonpath.get(self._data, path, deep_copy)
 
     def _begin_change(self):
         if not self._emitter._events:
@@ -443,7 +460,7 @@ class Record(EventEmitter, object):
         self._old_path_values = dict()
 
         if self._emitter.listeners(ALL_EVENT):
-            self._old_value = deepcopy(self.get())
+            self._old_value = deepcopy(self._data)
 
         for path in paths:
             if path != ALL_EVENT:
@@ -453,7 +470,7 @@ class Record(EventEmitter, object):
     def _complete_change(self):
         if (self._emitter.listeners(ALL_EVENT) and
                 self._old_value != self._data):
-            self._emitter.emit(ALL_EVENT, self.get())
+            self._emitter.emit(ALL_EVENT, self._data)
 
         self._old_value = None
 
@@ -461,7 +478,7 @@ class Record(EventEmitter, object):
             return
 
         for path in self._old_path_values:
-            current_value = jsonpath.get(self._data, path, True)
+            current_value = self._get_path(path) #jsonpath.get(self._data, path, True)
 
             if current_value != self._old_path_values[path]:
                 self._emitter.emit(path, current_value)

@@ -101,6 +101,7 @@ class Client(EventEmitter):
     def _on_message(self, message):
         if message['topic'] in self._message_callbacks:
             self._message_callbacks[message['topic']](message)
+            return
         else:
             self._on_error(message['topic'],
                            constants.event.MESSAGE_PARSE_ERROR,

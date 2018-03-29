@@ -8,6 +8,7 @@ from deepstreampy.utils import AckTimeoutRegistry
 from deepstreampy.utils import ResubscribeNotifier
 
 from tornado import concurrent
+from tornado import gen
 
 import json
 
@@ -18,23 +19,29 @@ class PresenceHandler(object):
         self._connection = connection
         self._client = client
         self._callbacks = {}
-        self._query_callback = None
+        self._query_future = None
         subscription_timeout = options.get("subscriptionTimeout", 15)
         self._ack_timeout_registry = AckTimeoutRegistry(
             client, topic_constants.PRESENCE, subscription_timeout)
         self._resubscribe_notifier = ResubscribeNotifier(
             client, self._resubscribe)
 
-    def get_all(self, callback):
-        self._query_callback = callback
-        return self._connection.send_message(topic_constants.PRESENCE,
+    @gen.coroutine
+    def get_all(self):
+        self._query_future = concurrent.Future()
+        self._connection.send_message(topic_constants.PRESENCE,
                                              action_constants.QUERY,
                                              [action_constants.QUERY])
+        result = yield self._query_future
+        raise gen.Return(result)
 
-    def get(self, callback, users):
-        self._query_callback = callback
-        return self._connection.send_message(topic_constants.PRESENCE,
+    @gen.coroutine
+    def get(self, users):
+        self._query_future = concurrent.Future()
+        self._connection.send_message(topic_constants.PRESENCE,
                                              action_constants.QUERY, users)
+        result = yield self._query_future
+        raise gen.Return(result)
 
     def subscribe(self, callback, users=None):
         if users is None:
@@ -91,9 +98,9 @@ class PresenceHandler(object):
                 self._callbacks[topic_constants.PRESENCE](user, False)
         elif action == action_constants.QUERY:
             parsed = self._parse_query_response(data)
-            if self._query_callback:
-                self._query_callback(parsed)
-                self._query_callback = None
+            if self._query_future:
+                self._query_future.set_result(parsed)
+                self._query_future = None
         else:
             self._client._on_error(topic_constants.PRESENCE,
                                    event_constants.UNSOLICITED_MESSAGE, action)

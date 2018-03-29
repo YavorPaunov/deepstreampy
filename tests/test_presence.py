@@ -69,18 +69,24 @@ class PresenceHandlerTest(testing.AsyncTestCase):
                                       'action': 'PNL',
                                       'data': ['Marge']})
         callback.assert_called_with('Marge', False)
+        callback.reset_mock()
         self.wait()
 
         # Query for clients
-        self.client.presence.get_all(callback)
+        f = self.client.presence.get_all()
+        f.add_done_callback(callback)
         self.handler.write_message.assert_called_with(msg('U|Q|Q+'))
 
         # Receive data for query
         self.client.presence.handle({'topic': 'U',
                                       'action': 'Q',
                                       'data': ['Marge', 'Homer', 'Bart']})
-        callback.assert_called_with(['Marge', 'Homer', 'Bart'])
+
         self.wait()
+
+        callback.assert_called_with(f)
+        self.assertEquals(f.result(), ['Marge', 'Homer', 'Bart'])
+
 
         # Unsubscribe to client logins
         self.client.presence.unsubscribe(callback)

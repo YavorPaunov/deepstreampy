@@ -11,6 +11,7 @@ from deepstreampy.message import message_parser
 from deepstreampy import utils
 
 from tornado import concurrent
+from tornado import gen
 
 from functools import partial
 
@@ -112,6 +113,10 @@ class RPCResponse(object):
         if self.auto_ack:
             self.ack()
 
+class RPCException(Exception):
+
+    def __init__(self, message):
+        super(RPCException, self).__init__(message)
 
 class RPC(object):
     """Represents a single RPC made from the client to the server.
@@ -119,9 +124,9 @@ class RPC(object):
     Encapsulates logic around timeouts and converts the incoming response data.
     """
 
-    def __init__(self, callback, client, **options):
+    def __init__(self, future, client, **options):
         self._options = options
-        self._callback = callback
+        self._future = future
         self._client = client
         self._connection = client._connection
 
@@ -138,11 +143,11 @@ class RPC(object):
 
     def respond(self, data):
         converted_data = message_parser.convert_typed(data, self._client)
-        self._callback(None, converted_data)
+        self._future.set_result(converted_data)
         self._complete()
 
     def error(self, error_msg):
-        self._callback(error_msg, None)
+        self._future.set_exception(RPCException(error_msg))
         self._complete()
 
     def _complete(self):
@@ -199,16 +204,20 @@ class RPCHandler(object):
 
         return future
 
-    def make(self, name, data, callback):
-        if not name:
-            raise ValueError("invalid argument name")
+    @gen.coroutine
+    def make(self, name, data):
+        f = concurrent.Future()
 
         uid = utils.get_uid()
         typed_data = message_builder.typed(data)
-        self._rpcs[uid] = RPC(callback, self._client, **self._options)
 
-        return self._connection.send_message(
+        self._rpcs[uid] = RPC(f, self._client, **self._options)
+
+        self._connection.send_message(
             topic_constants.RPC, actions.REQUEST, [name, uid, typed_data])
+
+        result = yield f
+        raise gen.Return(result)
 
     def _get_rpc(self, correlation_id, rpc_name, raw_message):
         if correlation_id not in self._rpcs:
