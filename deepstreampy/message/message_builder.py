@@ -45,7 +45,7 @@ def typed(value):
     if value_type in str_types:
         return types.STRING + value
 
-    if value_type is dict:
+    if value_type in [dict, list]:
         return types.OBJECT + json.dumps(value,
                                          separators=(',', ':'),
                                          sort_keys=False)
