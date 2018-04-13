@@ -41,11 +41,12 @@ def typed(value):
     else:
         num_types = (int, float, complex)
         str_types = (str,)
+    obj_types = (dict, list,)
 
     if value_type in str_types:
         return types.STRING + value
 
-    if value_type is dict:
+    if value_type in obj_types:
         return types.OBJECT + json.dumps(value,
                                          separators=(',', ':'),
                                          sort_keys=False)
