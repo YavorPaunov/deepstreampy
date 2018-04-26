@@ -26,7 +26,7 @@ ENTRY_MOVED_EVENT = 'ENTRY_MOVED_EVENT'
 
 class Record(EventEmitter, object):
 
-    def __init__(self, name, record_options, connection, options, client):
+    def __init__(self, name, connection, options, client):
         super(Record, self).__init__()
         self.name = name
         self.usages = 0
@@ -35,7 +35,6 @@ class Record(EventEmitter, object):
         self._options = options
 
         self._has_provider = False
-        self._record_options = record_options
         self._is_ready = False
         self._is_destroyed = False
         self._data = {}
@@ -535,9 +534,8 @@ class Record(EventEmitter, object):
 
 class List(Record):
 
-    def __init__(self, name, list_options, connection, options, client):
-        super(List, self).__init__(name, list_options, connection, options,
-                                   client)
+    def __init__(self, name, connection, options, client):
+        super(List, self).__init__(name, connection, options, client)
         self._before_structure = None
         self._has_add_listener = None
         self._has_remove_listener = None
@@ -741,19 +739,17 @@ class RecordHandler(EventEmitter, object):
                                                  record_read_timeout)
 
     @gen.coroutine
-    def get_record(self, name, record_options=None):
+    def get_record(self, name):
         """
         Return an existing record or create a new one.
 
         Args:
             name (str): the unique name of the record
-            record_options (dict): a dict of parameters for this particular
-                record
         """
         if name in self._records:
             record = self._records[name]
         else:
-            record = Record(name, record_options, self._connection,
+            record = Record(name, self._connection,
                             self._options, self._client)
             record.on('error', partial(self._on_record_error, name))
             record.on('destroyPending', partial(self._on_destroy_pending, name))
@@ -768,7 +764,7 @@ class RecordHandler(EventEmitter, object):
         raise gen.Return(record)
 
     @gen.coroutine
-    def get_list(self, name, list_options=None):
+    def get_list(self, name):
         """
         Return an exising list or create a new one.
 
@@ -779,8 +775,7 @@ class RecordHandler(EventEmitter, object):
         if name in self._lists:
             _list = self._lists[name]
         else:
-            _list = List(name, list_options, self._connection, self._options,
-                         self._client)
+            _list = List(name, self._connection, self._options, self._client)
 
             self._lists[name] = _list
 

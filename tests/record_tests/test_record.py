@@ -31,7 +31,6 @@ class RecordTest(testing.AsyncTestCase):
         self.io_loop = self.connection._io_loop
         self.options = {'recordReadAckTimeout': 100, 'recordReadTimeout': 200}
         self.record = Record('testRecord',
-                             {},
                              self.connection,
                              self.options,
                              self.client)

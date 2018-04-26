@@ -38,7 +38,7 @@ class UpdateNotInSync(unittest.TestCase):
             'merge_strategy': merge_strategies.remote_wins
         }
 
-        record = Record('recordConflict', {}, self.client._connection, options,
+        record = Record('recordConflict', self.client._connection, options,
                         self.client)
         record.on('error', self.error_callback)
         record.subscribe(self.subscribe_callback)
@@ -125,7 +125,7 @@ class PatchNotInSync(unittest.TestCase):
             'merge_strategy': merge_strategies.remote_wins
         }
 
-        record = Record('recordConflict', {}, self.client._connection, options,
+        record = Record('recordConflict', self.client._connection, options,
                         self.client)
         record.on('error', self.error_callback)
         record.subscribe(self.subscribe_callback)
@@ -282,7 +282,7 @@ class VersionExists(unittest.TestCase):
             'merge_strategy': merge_strategies.remote_wins
         }
 
-        record = Record('recordConflict', {}, self.client._connection, options,
+        record = Record('recordConflict', self.client._connection, options,
                         self.client)
         record.on('error', self.error_callback)
         record.subscribe(self.subscribe_callback)
@@ -357,7 +357,7 @@ class WriteAcknowledgement(unittest.TestCase):
             'merge_strategy': merge_strategies.local_wins
         }
 
-        record = Record('recordConflict', {}, self.client._connection, options,
+        record = Record('recordConflict', self.client._connection, options,
                         self.client)
         record.on('error', self.error_callback)
         record.subscribe(self.subscribe_callback)
