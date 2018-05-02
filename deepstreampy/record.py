@@ -25,7 +25,6 @@ ENTRY_MOVED_EVENT = 'ENTRY_MOVED_EVENT'
 
 
 class Record(EventEmitter, object):
-
     def __init__(self, name, connection, options, client):
         super(Record, self).__init__()
         self.name = name
@@ -50,8 +49,8 @@ class Record(EventEmitter, object):
         if 'merge_strategy' in options:
             self.merge_strategy = options['merge_strategy']
 
-        self._resubscribe_notifier = ResubscribeNotifier(client,
-                                                         self._send_read)
+        self._resubscribe_notifier = ResubscribeNotifier(
+            client, self._send_read)
         record_read_ack_timeout = options.get("recordReadAckTimeout", 15)
         self._read_ack_timeout = client.io_loop.call_later(
             record_read_ack_timeout,
@@ -79,13 +78,6 @@ class Record(EventEmitter, object):
             path (str, optional): a JSON path
         """
         return self._get_path(path)
-        f = concurrent.Future()
-
-        def ready_callback(_):
-            f.set_result(self._get_path(path))
-
-        self.when_ready(ready_callback)
-        return f
 
     def set(self, data, path=None, callback=None):
         """
@@ -123,7 +115,6 @@ class Record(EventEmitter, object):
             self._queued_method_calls.append(partial(self.set, data, path))
             return
 
-
         old_value = self._data
         deep_copy = self._options.get('recordDeepCopy', True)
         new_value = jsonpath.set(old_value, path, data, deep_copy)
@@ -132,7 +123,6 @@ class Record(EventEmitter, object):
             if callback:
                 callback(None)
             return
-
 
         self._send_update(path, data, config)
         self._apply_change(new_value)
@@ -203,8 +193,7 @@ class Record(EventEmitter, object):
                     1, partial(self._on_timeout, event_constants.ACK_TIMEOUT))
 
                 send_future = self._connection.send_message(
-                    topic_constants.RECORD,
-                    action_constants.UNSUBSCRIBE,
+                    topic_constants.RECORD, action_constants.UNSUBSCRIBE,
                     [self.name])
                 send_future.add_done_callback(
                     lambda f: future.set_result(f.result()))
@@ -266,40 +255,36 @@ class Record(EventEmitter, object):
             for version in versions:
                 if version in self._write_callbacks:
                     callback = self._write_callbacks[version]
-                    callback(message_parser.convert_typed(message['data'][2],
-                                                          self._client))
+                    callback(
+                        message_parser.convert_typed(message['data'][2],
+                                                     self._client))
                     del self._write_callbacks[version]
 
         elif message['data'][0] == event_constants.VERSION_EXISTS:
             self._recover_record(message['data'][2],
-                                 json.loads(message['data'][3]),
-                                 message)
+                                 json.loads(message['data'][3]), message)
 
         elif action == event_constants.MESSAGE_DENIED:
             self._clear_timeouts()
 
         elif action == action_constants.SUBSCRIPTION_HAS_PROVIDER:
-            has_provider = message_parser.convert_typed(message['data'][1],
-                                                        self._client)
+            has_provider = message_parser.convert_typed(
+                message['data'][1], self._client)
             self._has_provider = has_provider
             self.emit('hasProviderChanged', has_provider)
 
     def _recover_record(self, remote_version, remote_data, message):
         if self.merge_strategy:
-            self.merge_strategy(
-                self, remote_data, remote_version, partial(
-                    self._on_record_recovered,
-                    remote_version,
-                    remote_data,
-                    message))
+            self.merge_strategy(self, remote_data, remote_version,
+                                partial(self._on_record_recovered,
+                                        remote_version, remote_data, message))
         else:
-            self.emit('error',
-                      event_constants.VERSION_EXISTS,
+            self.emit('error', event_constants.VERSION_EXISTS,
                       'received update for {0} but version is {1}'.format(
                           remote_version, self.version))
 
-    def _on_record_recovered(
-            self, remote_version, remote_data, message, error, data):
+    def _on_record_recovered(self, remote_version, remote_data, message, error,
+                             data):
         if not error:
             old_version = self.version
             self._version = int(remote_version)
@@ -349,8 +334,8 @@ class Record(EventEmitter, object):
     def _apply_update(self, message):
         version = int(message['data'][1])
         if message['action'] == action_constants.PATCH:
-            data = message_parser.convert_typed(
-                message['data'][3], self._client)
+            data = message_parser.convert_typed(message['data'][3],
+                                                self._client)
         else:
             data = json.loads(message['data'][2])
 
@@ -383,18 +368,20 @@ class Record(EventEmitter, object):
             else:
                 msg_data = [self.name, self.version, data]
             self._connection.send_message(topic_constants.RECORD,
-                                          action_constants.UPDATE,
-                                          msg_data)
+                                          action_constants.UPDATE, msg_data)
         else:
             if config:
-                msg_data = [self.name, self.version, path,
-                            message_builder.typed(data), config]
+                msg_data = [
+                    self.name, self.version, path,
+                    message_builder.typed(data), config
+                ]
             else:
-                msg_data = [self.name, self.version, path,
-                            message_builder.typed(data)]
+                msg_data = [
+                    self.name, self.version, path,
+                    message_builder.typed(data)
+                ]
             self._connection.send_message(topic_constants.RECORD,
-                                          action_constants.PATCH,
-                                          msg_data)
+                                          action_constants.PATCH, msg_data)
 
     def _apply_change(self, new_data):
         if self.is_destroyed:
@@ -452,9 +439,10 @@ class Record(EventEmitter, object):
             return
 
         # Hacky way of getting active listeners, except a special one
-        paths = [event for event
-                 in self._emitter._events.keys()
-                 if event != 'new_listener']
+        paths = [
+            event for event in self._emitter._events.keys()
+            if event != 'new_listener'
+        ]
 
         self._old_path_values = dict()
 
@@ -467,8 +455,8 @@ class Record(EventEmitter, object):
                     self._data, path, True)
 
     def _complete_change(self):
-        if (self._emitter.listeners(ALL_EVENT) and
-                self._old_value != self._data):
+        if (self._emitter.listeners(ALL_EVENT)
+                and self._old_value != self._data):
             self._emitter.emit(ALL_EVENT, self._data)
 
         self._old_value = None
@@ -477,7 +465,8 @@ class Record(EventEmitter, object):
             return
 
         for path in self._old_path_values:
-            current_value = self._get_path(path) #jsonpath.get(self._data, path, True)
+            current_value = self._get_path(
+                path)  #jsonpath.get(self._data, path, True)
 
             if current_value != self._old_path_values[path]:
                 self._emitter.emit(path, current_value)
@@ -533,7 +522,6 @@ class Record(EventEmitter, object):
 
 
 class List(Record):
-
     def __init__(self, name, connection, options, client):
         super(List, self).__init__(name, connection, options, client)
         self._before_structure = None
@@ -599,8 +587,7 @@ class List(Record):
             index (int): the index of the entry to remove
         """
         if not self.is_ready:
-            self._queued_method_calls.append(
-                partial(self.remove_at, index))
+            self._queued_method_calls.append(partial(self.remove_at, index))
 
         current_entries = deepcopy(super(List, self).get())
         del current_entries[index]
@@ -651,12 +638,12 @@ class List(Record):
 
     def _before_change(self):
         self._has_add_listener = len(self.listeners(ENTRY_ADDED_EVENT)) > 0
-        self._has_remove_listener = len(self.listeners(ENTRY_REMOVED_EVENT)) > 0
+        self._has_remove_listener = len(
+            self.listeners(ENTRY_REMOVED_EVENT)) > 0
         self._has_move_listener = len(self.listeners(ENTRY_MOVED_EVENT)) > 0
 
-        if (self._has_add_listener or
-                self._has_remove_listener or
-                self._has_move_listener):
+        if (self._has_add_listener or self._has_remove_listener
+                or self._has_move_listener):
             self._before_structure = self._get_structure()
         else:
             self._before_structure = None
@@ -676,8 +663,7 @@ class List(Record):
 
     def _after_change_remove_listener(self, before, after):
         for entry in before:
-            if (entry not in after or
-                    len(after[entry]) < len(before[entry])):
+            if (entry not in after or len(after[entry]) < len(before[entry])):
                 for n in before[entry]:
                     if entry not in after or n not in after[entry]:
                         self.emit(ENTRY_REMOVED_EVENT, entry, n)
@@ -713,7 +699,6 @@ class List(Record):
 
 
 class RecordHandler(EventEmitter, object):
-
     def __init__(self, connection, client, **options):
         super(RecordHandler, self).__init__()
         self._options = options
@@ -726,17 +711,13 @@ class RecordHandler(EventEmitter, object):
 
         record_read_timeout = options.get("recordReadTimeout", 15)
 
-        self._has_registry = SingleNotifier(client,
-                                            connection,
-                                            topic_constants.RECORD,
-                                            action_constants.HAS,
-                                            record_read_timeout)
+        self._has_registry = SingleNotifier(
+            client, connection, topic_constants.RECORD, action_constants.HAS,
+            record_read_timeout)
 
-        self._snapshot_registry = SingleNotifier(client,
-                                                 connection,
-                                                 topic_constants.RECORD,
-                                                 action_constants.SNAPSHOT,
-                                                 record_read_timeout)
+        self._snapshot_registry = SingleNotifier(
+            client, connection, topic_constants.RECORD,
+            action_constants.SNAPSHOT, record_read_timeout)
 
     @gen.coroutine
     def get_record(self, name):
@@ -749,10 +730,11 @@ class RecordHandler(EventEmitter, object):
         if name in self._records:
             record = self._records[name]
         else:
-            record = Record(name, self._connection,
-                            self._options, self._client)
+            record = Record(name, self._connection, self._options,
+                            self._client)
             record.on('error', partial(self._on_record_error, name))
-            record.on('destroyPending', partial(self._on_destroy_pending, name))
+            record.on('destroyPending', partial(self._on_destroy_pending,
+                                                name))
             record.on('delete', partial(self._remove_record, name))
             record.on('discard', partial(self._remove_record, name))
 
@@ -818,12 +800,8 @@ class RecordHandler(EventEmitter, object):
             future = concurrent.Future()
             future.set_result(None)
         else:
-            listener = Listener(topic_constants.RECORD,
-                                pattern,
-                                callback,
-                                self._options,
-                                self._client,
-                                self._connection)
+            listener = Listener(topic_constants.RECORD, pattern, callback,
+                                self._options, self._client, self._connection)
             self._listeners[pattern] = listener
             future = listener.send_future
 
@@ -848,8 +826,7 @@ class RecordHandler(EventEmitter, object):
                 del self._listeners[pattern]
         else:
             self._client._on_error(topic_constants.RECORD,
-                                   event_constants.NOT_LISTENING,
-                                   pattern)
+                                   event_constants.NOT_LISTENING, pattern)
             future = concurrent.Future()
             future.set_result(None)
 
@@ -894,23 +871,21 @@ class RecordHandler(EventEmitter, object):
         data = message['data']
         processed = False
 
-        if (action == action_constants.READ and
-                self._snapshot_registry.has_request(name)):
+        if (action == action_constants.READ
+                and self._snapshot_registry.has_request(name)):
             processed = True
-            self._snapshot_registry.receive(name,
-                                            None,
-                                            json.loads(data[2]))
+            self._snapshot_registry.receive(name, None, json.loads(data[2]))
 
-        if (action == action_constants.HAS and
-                self._has_registry.has_request(name)):
+        if (action == action_constants.HAS
+                and self._has_registry.has_request(name)):
             processed = True
             record_exists = message_parser.convert_typed(data[1], self._client)
             self._has_registry.receive(name, None, record_exists)
 
         listener = self._listeners.get(name, None)
-        if (action == action_constants.ACK and
-                data[0] == action_constants.UNLISTEN and
-                listener and listener.destroy_pending):
+        if (action == action_constants.ACK
+                and data[0] == action_constants.UNLISTEN and listener
+                and listener.destroy_pending):
             processed = True
             listener.destroy()
             del self._listeners[name]
@@ -928,13 +903,13 @@ class RecordHandler(EventEmitter, object):
         action = message['action']
         data = message['data']
 
-        if (action == action_constants.ERROR and
-                data[0] not in (event_constants.VERSION_EXISTS,
-                                action_constants.SNAPSHOT,
-                                action_constants.HAS)):
+        if (action == action_constants.ERROR
+                and data[0] not in (event_constants.VERSION_EXISTS,
+                                    action_constants.SNAPSHOT,
+                                    action_constants.HAS)):
             message['processedError'] = True
-            self._client._on_error(topic_constants.RECORD,
-                                   message['data'][0], message['data'][1])
+            self._client._on_error(topic_constants.RECORD, message['data'][0],
+                                   message['data'][1])
             return
 
         if action in (action_constants.ACK, action_constants.ERROR):
@@ -945,8 +920,8 @@ class RecordHandler(EventEmitter, object):
                 name = message['data'][1]
                 self._destroy_emitter.emit('destroy_ack_' + name, message)
 
-                if (message['data'][0] == action_constants.DELETE and
-                        name in self._records):
+                if (message['data'][0] == action_constants.DELETE
+                        and name in self._records):
                     self._records[name]._on_message(message)
                 return
 
@@ -968,8 +943,7 @@ class RecordHandler(EventEmitter, object):
 
         if not processed:
             self._client._on_error(topic_constants.RECORD,
-                                   event_constants.UNSOLICITED_MESSAGE,
-                                   name)
+                                   event_constants.UNSOLICITED_MESSAGE, name)
 
     def _on_record_error(self, record_name, error):
         message = "No ACK message received in time for {}".format(record_name)
@@ -988,7 +962,6 @@ class RecordHandler(EventEmitter, object):
 
 
 class AnonymousRecord(EventEmitter, object):
-
     def __init__(self, record_handler):
         super(AnonymousRecord, self).__init__()
         self._record_handler = record_handler
