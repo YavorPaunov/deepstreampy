@@ -258,7 +258,8 @@ class RPCHandler(object):
             return
 
         if action == actions.ERROR:
-            if data[0] == event_constants.MESSAGE_PERMISSION_ERROR:
+            if data[0] in (event_constants.MESSAGE_PERMISSION_ERROR,
+                           event_constants.INVALID_RPC_CORRELATION_ID):
                 return
 
             if (data[0] == event_constants.MESSAGE_DENIED and
